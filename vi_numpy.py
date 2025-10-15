@@ -15,8 +15,8 @@ class Var_Ineq:
             open(record_file, 'w')
             with open(record_file, 'a') as fio:
                 print_len = 6+print_preci
-                fio.writelines(f"|{'nit':^7}|{'cano_sect':^{print_len}}|{'pd_bias':^{print_len}}|{'grad':^{print_len}}|\n")
-        nit, pre_grad, eta, _beta = 0, 0, tangent_stepln, 1.0
+                fio.writelines(f"|{'nit':^7}|{'_cano_sect':^{print_len}}|{'cano_sect':^{print_len}}|{'pd_bias':^{print_len}}|{'grad':^{print_len}}|\n")
+        nit, pre_grad, _singuavoi_stepln, _canosect_TOL = 0, 0, 1.0, 1e-2
         while True:
             subnit, adam_m, adam_v = 0, 0, 0
             while True:
@@ -32,15 +32,16 @@ class Var_Ineq:
                     return [cano_sect, sigma], False, nit, record_list
                 elif (subnit := subnit+1) > maxsubnit or sigma_biasnorm < 1e-9 or np.linalg.norm(pre_grad-(pre_grad := grad), np.inf) < 1e-12:
                     if sigma_biasnorm < 3e-8:
-                        eta += (tangent_stepln-eta)*0.1
-                        _beta *= 0.2
-                        if cano_sect_norm < canosect_TOL:
-                            return [cano_sect, sigma], True, nit, record_list
+                        _singuavoi_stepln *= 0.2
+                        if cano_sect_norm < _canosect_TOL:
+                            if _canosect_TOL < canosect_TOL:
+                                return [cano_sect, sigma], True, nit, record_list
+                            else:
+                                _canosect_TOL *= 1-canosect_stepln
                     else:
                         if not sigma_biasnorm < 1e-6:
                             mu, sigma, r = bpv_bkp
-                        eta *= 0.5
-                        _beta += 1
+                        _singuavoi_stepln += 1
                     break
 
                 adam_m += 1e-1*(grad-adam_m)
@@ -49,15 +50,15 @@ class Var_Ineq:
                 sigma = (lambda vec: vec/vec.sum())(np.exp(np.log(sigma)-dsigma))
 
             bpv_bkp = mu.copy(), sigma.copy(), r.copy()
-            diff, beta = self.along_equilbundl(sigma, r, comat, _beta*cano_sect.sum())
-            mu = cano_sect+beta*sigma
+            diff, beta = self.along_equilbundl(sigma, r, comat, _singuavoi_stepln*cano_sect.sum())
             dsigma = sigma*diff.sum(axis=-1)
-            _canosect_stepln = (eta/np.linalg.norm(dsigma)).clip(max=canosect_stepln)
-            mu *= 1-_canosect_stepln
-            sigma = (lambda vec: vec/vec.sum())(np.exp(np.log(sigma)-_canosect_stepln*dsigma))
+            eta = (tangent_stepln/np.linalg.norm(dsigma)).clip(max=canosect_stepln)/(1+_singuavoi_stepln)
+            mu_hat = cano_sect+beta*sigma
+            mu = (mu_hat*(1-eta)).clip(min=0.2*_canosect_TOL)
+            sigma = (lambda vec: vec/vec.sum())(np.exp(np.log(sigma)-sigma*np.dot(diff, 1-mu/mu_hat)))
             if verbose >= 1:
                 with open(record_file, 'a') as fio:
-                    fio.writelines(f"|{nit:^7d}|{'|'.join([arr2str(item, print_preci) for item in record_list])}|{eta:^.{print_preci}e}|{beta:^+.{print_preci}e}|{_beta:^.{print_preci}e}|\n")
+                    fio.writelines(f"|{nit:^7d}|{_canosect_TOL:^.{print_preci}e}|{'|'.join([arr2str(item, print_preci) for item in record_list])}|{_singuavoi_stepln:^.{print_preci}e}|\n")
 
     def onto_equilbundl(self, mu, sigma):
         n = len(sigma)
@@ -75,6 +76,6 @@ class Var_Ineq:
         coff = np.eye(n)-np.kron(np.ones(n)[:, None], sigma[None, :])
         comat_ = np.dot(coff, comat)
         rmin = r.min()
-        beta = -rmin*np.random.rand()*0e0+_beta+1e-8
+        beta = _beta+1e-8
         diff = np.linalg.solve(comat_+beta*np.eye(n), coff*(r+beta)[None, :])
         return diff, beta+rmin
