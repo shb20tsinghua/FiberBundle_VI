@@ -31,12 +31,12 @@ class Var_Ineq:
         subnit_low, subnit_high = int(self.maxsubnit*0.3), int(self.maxsubnit*0.6)
         self.tangent_stepln, singu_avoid_times = 1e-1, 0
         self.record_list = [0]*8
-        corrected, subnit, sigma, mu_sum, mu_check_sum = self.predictor_corrector(sigma, 1e3)
+        corrected, subnit, sigma, mu_sum, mu_check_sum, dmu_sign = self.predictor_corrector(sigma, 1e3)
         while True:
             if mu_check_sum <= self.gap_TOL:
                 return sigma
             if not corrected:
-                mu_sum = (1+2e-2)*mu_sum
+                mu_sum = self.singu_avoid(mu_sum, mu_check_sum)
                 stepln_adjust = 0.5
                 singu_avoid_times += 1
             else:
@@ -44,8 +44,15 @@ class Var_Ineq:
             self.record_list[5:8] = [subnit, self.tangent_stepln, singu_avoid_times]
             if self.verbose >= 1:
                 self.print_record()
-            corrected, subnit, sigma, mu_sum, mu_check_sum = self.predictor_corrector(sigma, mu_sum)
+            corrected, subnit, sigma, mu_sum, mu_check_sum, dmu_sign_new = self.predictor_corrector(sigma, mu_sum)
+            if dmu_sign_new != dmu_sign:
+                stepln_adjust = 0.9
+            dmu_sign = dmu_sign_new
             self.tangent_stepln *= stepln_adjust
+
+    def singu_avoid(self, mu_sum, mu_check_sum):
+        mu_sum_new = (1+2e-2)*mu_sum
+        return mu_sum_new
 
     def state_comp(self, sigma):
         F, JF = self.VI_F.value_Jaco(sigma)
@@ -99,4 +106,4 @@ class Var_Ineq:
             self.nit += 1
         if not corrected:
             sigma, mu_check_sum, mu_sum_new = *state_bkp, mu_sum
-        return corrected, subnit, sigma, mu_sum_new, mu_check_sum
+        return corrected, subnit, sigma, mu_sum_new, mu_check_sum, dmu_sign
