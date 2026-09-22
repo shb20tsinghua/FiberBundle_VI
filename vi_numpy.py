@@ -2,14 +2,14 @@ import numpy as np
 from scipy.optimize import brentq
 
 
-class Var_Ineq:
+class VI_simplex:
     def __init__(self, VI_F):
         self.VI_F = VI_F
 
-    def solve(self, sigma_init, gap_tol, maxnit=50000, maxsubnit=10, verbose=0, record_file=None, print_preci=6):
-        self.nit, self.maxnit, self.maxsubnit, self.gap_TOL = 0, maxnit, maxsubnit, gap_tol
+    def solve(self, it_init, gap_tol, efficient_corrector=True, maxnit=50000, maxsubnit=10, verbose=0, record_file=None, print_preci=6):
+        self.nit, self.maxnit, self.maxsubnit, self.gap_TOL, self.efficient_corrector = 0, maxnit, maxsubnit, gap_tol, efficient_corrector
         self.verbose, self.record_file, self.print_preci = verbose if record_file else 0, record_file, print_preci
-        self.n = len(sigma_init)
+        self.n = len(it_init)
         self.mu_min = min(1e-9, self.gap_TOL/self.n)
         if verbose >= 1:
             open(record_file, 'w')
@@ -17,7 +17,7 @@ class Var_Ineq:
                 print_len = 6+print_preci
                 fio.writelines(f"|{'nit':^7}|{'gap':^{print_len}}|{'mu_sum':^{print_len}}|{'G_norm':^{print_len}}|{'d_sign':^7}|{'subnit':^7}|{'tang_stepln':^{print_len}}|{'avoid_n':^7}|\n")
         try:
-            sigma = self.path_following(sigma_init)
+            sigma = self.path_following(it_init)
         except UserWarning as err:
             print(err)
             sigma = None
@@ -62,12 +62,12 @@ class Var_Ineq:
         J_sigma = I_1sigma.dot(JF*sigma[None, :]+np.diag(np.dot(I_1sigma, F))).dot(I_1sigma)
         return F, r_difference, mu_check_sum, I_1sigma, J_sigma
 
-    def corrector_comp(self, sigma, mu, newton1=False):
+    def corrector_comp(self, sigma, mu):
         F, r_difference, mu_check_sum, I_1sigma, J_sigma = self.state_comp(sigma)
         mu_sum = mu.sum()
         G_sigma_mu_norm = np.linalg.norm(I_1sigma.T.dot(sigma*F-mu))
         J_G = J_sigma+mu_sum*np.eye(self.n)
-        if newton1:
+        if self.efficient_corrector:
             G_tilde_sigma_mu = I_1sigma.dot(F-mu/sigma)
             corrector_sigma = np.linalg.solve(J_G.T.dot(J_G)+min(1, G_sigma_mu_norm/self.n)*np.eye(self.n), J_G.T.dot(G_tilde_sigma_mu/max(1, np.linalg.norm(G_tilde_sigma_mu))))
         else:
@@ -76,14 +76,14 @@ class Var_Ineq:
         corrector_sigma = I_1sigma.dot(corrector_sigma)
         return corrector_sigma, G_sigma_mu_norm, mu_check_sum
 
-    def predictor_corrector(self, sigma, mu_sum, decrease_only=False):
+    def predictor_corrector(self, sigma, mu_sum, enforce_decrease=False):
         F, r_difference, mu_check_sum, I_1sigma, J_sigma = self.state_comp(sigma)
         state_bkp = [item.copy() for item in [sigma, mu_check_sum]]
         r = r_difference+mu_sum-mu_check_sum
         mu = sigma*r
 
         J_G = J_sigma+mu_sum*np.eye(self.n)
-        dmu_sign = 1 if decrease_only else np.linalg.slogdet(J_G)[0]
+        dmu_sign = 1 if enforce_decrease else np.linalg.slogdet(J_G)[0]
         tangent_sigma = np.linalg.solve(J_G, I_1sigma.dot(r))
         tangent_ln = np.sqrt(1+tangent_sigma.dot(tangent_sigma))
         eta = min(0.1, self.tangent_stepln/tangent_ln)
@@ -102,7 +102,8 @@ class Var_Ineq:
                 self.print_record()
             if (corrected := G_sigma_mu_norm <= self.mu_min):
                 break
-            sigma = (lambda vec: vec/vec.sum())(np.exp(np.log(sigma)-corrector_sigma))
+            _sigma = (lambda vec: vec/vec.sum())(np.exp(np.log(sigma)-corrector_sigma))
+            sigma = _sigma if not np.isnan(_sigma).any() else sigma
             self.nit += 1
         if not corrected:
             sigma, mu_check_sum, mu_sum_new = *state_bkp, mu_sum
