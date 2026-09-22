@@ -2,8 +2,8 @@
 
 This repository contains the experiment code and results for the fixed-point bundle method for solving variational inequalities (VIs) and game equilibrium problems. The algorithm follows the predictor-corrector path-following framework. It takes VIs in the form of ${\rm VI}(F,\Delta_n)$ or ${\rm VI}(F,\Delta_n^m)$ and guarantees to find a solution for each input VI instance.
 
-- `vi_numpy.py` (for ${\rm VI}(F,\Delta_n)$): implementation for the paper titled “A path-following framework on fiber bundle for variational inequalities” (available at [arXiv:2606.00778](https://arxiv.org/abs/2606.00778) and [Optimization Online](https://optimization-online.org/?p=34972)).
-- `game_numpy.py` (for ${\rm VI}(F,\Delta_n^m)$): implementation for the paper titled “The fixed-point bundle method over product-of-simplex domains arising from game equilibria” (available at [arXiv:2609.16158](https://arxiv.org/abs/2609.16158) and [Optimization Online](https://optimization-online.org/?p=36751)).
+- `vi_numpy.py` (for ${\rm VI}(F,\Delta_n)$ ): implementation for the paper titled “A path-following framework on fiber bundle for variational inequalities” (available at [arXiv:2606.00778](https://arxiv.org/abs/2606.00778) and [Optimization Online](https://optimization-online.org/?p=34972)).
+- `game_numpy.py` (for ${\rm VI}(F,\Delta_n^m)$ ): implementation for the paper titled “The fixed-point bundle method over product-of-simplex domains arising from game equilibria” (available at [arXiv:2609.16158](https://arxiv.org/abs/2609.16158) and [Optimization Online](https://optimization-online.org/?p=36751)).
 
 ## Usage
 
@@ -26,7 +26,7 @@ Each model contains a function `value_Jaco` evaluating the function value and th
 `vi_numpy.py` holds the solver `VI_simplex` that takes an operator $F:\Delta_n\to\mathbb{R}^n$ as input, and `game_numpy.py` holds the solver `VI_simplex_product` that takes an operator on $F:\Delta_n^m\to\mathbb{R}^{m\times n}$ as input. Both solvers have a function `solve` to solve the input VI, which takes the following input parameters:
 
 - `iter_init`: iteration starting point, where the path-following starts.
-- `gap_tol`: required precision. ${\rm VI}(F,\Delta_n)$ is solved to ${\rm gap}(\sigma)=\sigma^\top F(\sigma)-\min_a F_a(\sigma)\leq{\rm gap_tol}$, and ${\rm VI}(F,\Delta_n^m)$ is solved to ${\rm gap}_i(\pi)=\pi_i^\top F_i(\pi)-\min_a F_{i,a}(\pi)\leq{\rm gap_tol}$.
+- `gap_tol`: required precision. ${\rm VI}(F,\Delta_n)$ is solved to $`{\rm gap}(\sigma)=\sigma^\top F(\sigma)-\min_a F_a(\sigma)\leq{\rm gap\_tol}`$, and ${\rm VI}(F,\Delta_n^m)$ is solved to $`{\rm gap}_i(\pi)=\pi_i^\top F_i(\pi)-\min_a F_{i,a}(\pi)\leq{\rm gap\_tol}`$.
 - `efficient_corrector=True`: the solvers provide two correctors to choose from, one derived from the KKT conditions and one derived from the barrier problem, where the one derived from the barrier problem is more efficient.
 - `maxnit=50000`: maximum iteration number for the total algorithm.
 - `maxsubnit=10`: maximum iteration number for corrector subiteration.
