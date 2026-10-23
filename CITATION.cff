@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite the papers listed below.
+title: >-
+  FiberBundle_VI: fixed-point bundle method for variational inequalities and
+  game equilibria
+abstract: >-
+  Reference implementation of the fixed-point bundle predictor-corrector
+  path-following method for variational inequalities on the simplex and on the
+  product of simplices (finite normal-form game equilibria), together with the
+  operator models and per-instance experiment logs behind the numerical results.
+authors:
+  - family-names: Sun
+    given-names: Hongbo
+license: MIT
+repository-code: "https://github.com/shb20tsinghua/FiberBundle_VI"
+keywords:
+  - variational inequalities
+  - Nash equilibrium
+  - path-following
+  - predictor-corrector
+  - fiber bundle
+  - interior-point methods
+  - numerical experiments
+references:
+  - type: article
+    title: >-
+      A path-following framework on fiber bundle for variational inequalities
+    authors:
+      - family-names: Sun
+        given-names: Hongbo
+    year: 2026
+    url: "https://arxiv.org/abs/2606.00778"
+    identifiers:
+      - type: other
+        value: "arXiv:2606.00778"
+  - type: article
+    title: >-
+      The fixed-point bundle method over product-of-simplex domains arising
+      from game equilibria
+    authors:
+      - family-names: Sun
+        given-names: Hongbo
+    year: 2026
+    url: "https://arxiv.org/abs/2609.16158"
+    identifiers:
+      - type: other
+        value: "arXiv:2609.16158"

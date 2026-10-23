@@ -1,4 +1,4 @@
-|seed |success|  nit  |    gap     |  tau_sum   |   G_norm   |avoid_n|
+|seed |success|  nit  |    gap     |barrier_sum |   G_norm   |avoid_n|
 |  3  |True   |  417  |9.671371e-06|9.838086e-06|7.562495e-10|   5   |
 |  2  |True   |  446  |9.376679e-06|1.053235e-05|8.885696e-10|   7   |
 |  7  |True   |  488  |9.011394e-06|9.034273e-06|2.690072e-10|   9   |
