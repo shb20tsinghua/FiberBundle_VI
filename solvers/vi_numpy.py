@@ -222,12 +222,12 @@ class VI_simplex:
         values, reduced, gap, projector, bundle_jacobian = self._cache_entries
         return values, reduced, gap, projector, bundle_jacobian.copy()
 
-    def _compute_corrector(self, sigma, mu):
+    def _compute_corrector(self, sigma, mu, corrector_tol):
         """One regularised Newton corrector step for fixed ``mu``."""
         values, reduced, gap, projector, bundle_jacobian = self._evaluate_state(sigma)
         residual = projector.T.dot(sigma * values - mu)
         residual_norm = np.sqrt(residual.dot(residual))
-        if residual_norm <= self._mu_floor:
+        if residual_norm <= corrector_tol:
             return None, residual_norm, gap
         mu_sum = mu.sum()
         bundle_jacobian[self._diagonal] += mu_sum
@@ -278,18 +278,19 @@ class VI_simplex:
         sigma_next = sigma * np.exp(-tangent * (eta * direction))
         sigma_next /= sigma_next.sum()
 
+        corrector_tol = min(_MU_FLOOR, mu.min())
         corrected = False
         for subnit in range(self._maxsubnit):
             if self._nit > self._maxnit:
                 raise UserWarning("Maximum Iteration Number Exceeded!")
-            step, residual_norm, gap = self._compute_corrector(sigma_next, mu)
+            step, residual_norm, gap = self._compute_corrector(sigma_next, mu, corrector_tol)
             self._record.nit = self._nit
             self._record.gap = gap
             self._record.G_norm = residual_norm
             self._record.d_sign = int(direction)
             if self._verbose >= 2:
                 self._write_record()
-            corrected = residual_norm <= self._mu_floor
+            corrected = step is None
             if corrected:
                 break
             sigma_next = sigma_next * np.exp(-step)

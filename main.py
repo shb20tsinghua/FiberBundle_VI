@@ -14,6 +14,7 @@ the README.
 from __future__ import annotations
 
 import argparse
+import math
 import numbers
 import os
 import sys
@@ -73,6 +74,17 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from error
     if parsed < 1:
         raise argparse.ArgumentTypeError(f"expected a positive integer, got {parsed}")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    """argparse type for a positive finite float."""
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"expected a positive number, got {value!r}") from error
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive number, got {value!r}")
     return parsed
 
 
@@ -207,7 +219,8 @@ class PayoffTensorOperator:
 
     and the operator is ``F_i(pi) = grad_{pi_i} f_i(pi)``.  The tensor entries
     are drawn from ``N(1, 1/m)``; ``R = m*n`` is the rank used in the experiment.
-    This model is defined on the product domain ``Delta_n^m`` only.
+    The model is defined on ``Delta_n^m``; at ``m = 1`` it reduces to an operator
+    on ``Delta_n``.
     """
 
     def __init__(self, seed: int, players: int, actions: int, rank: int) -> None:
@@ -229,7 +242,9 @@ class PayoffTensorOperator:
         self._block_size = max(1, min(players, (1 << 21) // (8 * rank * players)))
 
     def value_Jaco(self, pi: FloatArray) -> tuple[FloatArray, FloatArray]:
-        """Return ``F(pi)`` (shape ``(m, n)``) and its Jacobian (shape ``(m, n, m, n)``)."""
+        """Return ``F(pi)`` and its Jacobian, both with the shape of ``pi``."""
+        shape = pi.shape
+        pi = np.atleast_2d(pi)
         players, actions = self._players, self._actions
         contracted = np.matmul(self._payoff_t, pi[..., None])[..., 0]
         product = np.prod(contracted, axis=1)
@@ -253,7 +268,7 @@ class PayoffTensorOperator:
         for i in range(players):
             np.einsum("rjq,rj->rjq", permuted[i], scaled[i], out=blocks)
             np.matmul(diagonal_t[i], weight, out=jacobian[i])
-        return values, jacobian.reshape(players, actions, players, actions)
+        return values.reshape(shape), jacobian.reshape(shape + shape)
 
 
 # ------------------------------------------------------------------ formatting
@@ -268,21 +283,36 @@ def format_result(seed: int, result, summary: Iterable) -> str:
 
 # ------------------------------------------------------------- single instances
 def run_vi_instance(seed: int, n: int, hidden_layers: Sequence[int] | None = None,
-                    verbose: int = 0, efficient_corrector: bool = True) -> str:
+                    verbose: int = 0, efficient_corrector: bool = True,
+                    gap_tol: float = GAP_TOLERANCE, payoff_game: bool = False,
+                    rank: int | None = None) -> str:
     """Solve one seeded ``VI(F, Delta_n)`` instance and return its result line.
 
-    ``hidden_layers`` defaults to ``[n]`` (i.e. ``[m*n]`` with ``m = 1``).
+    ``hidden_layers`` defaults to ``[n]`` and configures the neural-network
+    operator.  With ``payoff_game=True`` the payoff-tensor operator with
+    ``players = 1`` is used instead; its rank defaults to ``n``.
     """
-    if hidden_layers is None:
-        hidden_layers = [n]
+    if payoff_game:
+        if hidden_layers is not None:
+            raise ValueError("hidden_layers is not used by the payoff-tensor model")
+        if rank is None:
+            rank = n
+        if not isinstance(rank, numbers.Integral) or int(rank) < 1:
+            raise ValueError("rank must be a positive integer")
+        operator = PayoffTensorOperator(seed, 1, n, int(rank))
     else:
-        hidden_layers = _validated_hidden_layers(hidden_layers)
-    operator = NeuralNetworkOperator(seed, [n, *hidden_layers, n], 0)
+        if rank is not None:
+            raise ValueError("rank is only used by the payoff-tensor model")
+        if hidden_layers is None:
+            hidden_layers = [n]
+        else:
+            hidden_layers = _validated_hidden_layers(hidden_layers)
+        operator = NeuralNetworkOperator(seed, [n, *hidden_layers, n], 0)
 
     np.random.seed(seed)
     initial_point = np.random.dirichlet(np.ones(n))
     solution, summary = VI_simplex(operator).solve(
-        initial_point, gap_tol=GAP_TOLERANCE, efficient_corrector=efficient_corrector,
+        initial_point, gap_tol=gap_tol, efficient_corrector=efficient_corrector,
         maxnit=MAX_ITERATIONS, maxsubnit=MAX_SUBITERATIONS, verbose=verbose,
         record_file=RECORD_FILE, print_preci=PRINT_PRECISION)
     return format_result(seed, solution, summary)
@@ -291,7 +321,7 @@ def run_vi_instance(seed: int, n: int, hidden_layers: Sequence[int] | None = Non
 def run_game_instance(seed: int, dimension: tuple[int, int],
                       hidden_layers: Sequence[int] | None = None, verbose: int = 0,
                       payoff_game: bool = True, efficient_corrector: bool = True,
-                      rank: int | None = None) -> str:
+                      rank: int | None = None, gap_tol: float = GAP_TOLERANCE) -> str:
     """Solve one seeded ``VI(F, Delta_n^m)`` instance and return its result line.
 
     The payoff-tensor model is configured by ``rank`` (the CP rank ``R``, which
@@ -320,7 +350,7 @@ def run_game_instance(seed: int, dimension: tuple[int, int],
     np.random.seed(seed)
     initial_point = np.random.dirichlet(np.ones(n), size=(m,))
     solution, summary = VI_simplex_product(operator).solve(
-        initial_point, gap_tol=GAP_TOLERANCE, efficient_corrector=efficient_corrector,
+        initial_point, gap_tol=gap_tol, efficient_corrector=efficient_corrector,
         maxnit=MAX_ITERATIONS, maxsubnit=MAX_SUBITERATIONS, verbose=verbose,
         record_file=RECORD_FILE, print_preci=PRINT_PRECISION)
     return format_result(seed, solution, summary)
@@ -329,13 +359,14 @@ def run_game_instance(seed: int, dimension: tuple[int, int],
 # ------------------------------------------------------------------ CLI
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Solve one instance: payoff_F always uses game_numpy; nn_F uses "
-                    "vi_numpy when m = 1 and game_numpy when m > 1.")
+        description="Solve one instance: vi_numpy when m = 1, game_numpy when m > 1.")
     parser.add_argument("--dimension", type=_positive_int, nargs=2, required=True,
                         metavar=("M", "N"), help="dimensions m n")
     parser.add_argument("--model", choices=("nn_F", "payoff_F"), required=True,
                         help="operator model: nn_F (neural network) or payoff_F (payoff tensor)")
     parser.add_argument("--seed", type=int, default=0, help="random seed of the instance (default 0)")
+    parser.add_argument("--gap-tol", type=_positive_float, default=GAP_TOLERANCE,
+                        help="required gap tolerance (default 1e-5)")
     parser.add_argument("--hidden-layers", type=_parse_layer_list, metavar="LIST",
                         help="bracketed list of hidden-layer widths, e.g. '[8, 4]' or '[]' (default [m*n])")
     parser.add_argument("--rank", type=_positive_int,
@@ -361,24 +392,23 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(arguments)
     efficient_corrector = not args.kkt
     m, n = args.dimension
+    payoff_game = args.model == "payoff_F"
 
-    if args.model == "payoff_F":
-        if args.hidden_layers is not None:
-            raise SystemExit("--hidden-layers is only used with --model nn_F")
-        line = run_game_instance(args.seed, (m, n), verbose=args.verbose,
-                                 payoff_game=True, efficient_corrector=efficient_corrector,
-                                 rank=args.rank)
-    elif m == 1:
-        if args.rank is not None:
-            raise SystemExit("--rank is only used with --model payoff_F")
-        line = run_vi_instance(args.seed, n, args.hidden_layers, verbose=args.verbose,
-                               efficient_corrector=efficient_corrector)
+    if payoff_game and args.hidden_layers is not None:
+        raise SystemExit("--hidden-layers is only used with --model nn_F")
+    if not payoff_game and args.rank is not None:
+        raise SystemExit("--rank is only used with --model payoff_F")
+
+    if m == 1:
+        line = run_vi_instance(
+            args.seed, n, args.hidden_layers, verbose=args.verbose,
+            efficient_corrector=efficient_corrector, gap_tol=args.gap_tol,
+            payoff_game=payoff_game, rank=args.rank)
     else:
-        if args.rank is not None:
-            raise SystemExit("--rank is only used with --model payoff_F")
-        line = run_game_instance(args.seed, (m, n), hidden_layers=args.hidden_layers,
-                                 verbose=args.verbose, payoff_game=False,
-                                 efficient_corrector=efficient_corrector)
+        line = run_game_instance(
+            args.seed, (m, n), hidden_layers=args.hidden_layers, verbose=args.verbose,
+            payoff_game=payoff_game, efficient_corrector=efficient_corrector,
+            rank=args.rank, gap_tol=args.gap_tol)
     print(line)
 
 

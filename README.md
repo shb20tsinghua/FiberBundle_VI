@@ -3,11 +3,16 @@
 Reference implementation of the *fixed-point bundle* predictor–corrector path-following method for
 
 - variational inequalities on the simplex, $\mathrm{VI}(F,\Delta_n)$, and
-- variational inequalities on the product of simplices, $\mathrm{VI}(F,\Delta_n^m)$, which include the Nash equilibrium problem of finite normal-form games.
+- variational inequalities on the product of simplices, $\mathrm{VI}(F,\Delta_n^m)$, which include the Nash equilibrium problem of $m$-player $n$-action games.
 
 The method requires no monotonicity or other structural assumptions: it follows special central paths on a fiber bundle from an arbitrary starting point, detects and avoids singularities, and guarantees global linear convergence.
 
-**Contents:** [Overview](#overview) · [Repository structure](#repository-structure) · [Installation](#installation) · [Quick start](#quick-start) · [Operator models](#operator-models) · [Solver API](#solver-api) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Data](#data) · [Citation](#citation) · [License](#license)
+![Convergence of the path-following iteration](docs/overview.png)
+
+*Convergence of two representative runs; reproducible with `docs/plot_overview.py`
+(seed 2, gap_tol = 1e-10).*
+
+**Contents:** [Overview](#overview) · [Installation](#installation) · [Quick start](#quick-start) · [Repository structure](#repository-structure) · [Solver API](#solver-api) · [Built-in operator models](#built-in-operator-models) · [Custom operators](#custom-operators) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Data](#data) · [Citation](#citation) · [License](#license)
 
 Python ≥ 3.9 · NumPy ≥ 2.0 · SciPy ≥ 1.10 · MIT License
 
@@ -15,28 +20,12 @@ Python ≥ 3.9 · NumPy ≥ 2.0 · SciPy ≥ 1.10 · MIT License
 
 The repository accompanies two papers:
 
-| #   | Paper                                                                                                                                                                                                                | Implementation                                    |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solvers/vi_numpy.py` (for $\mathrm{VI}(F,\Delta_n)$ ) |
+| #   | Paper                                                                                                                                                                                                                | Implementation                                             |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solvers/vi_numpy.py` (for $\mathrm{VI}(F,\Delta_n)$ )     |
 | 2   | *The fixed-point bundle method over product-of-simplex domains arising from game equilibria* — [arXiv:2609.16158](https://arxiv.org/abs/2609.16158), [Optimization Online](https://optimization-online.org/?p=36751) | `solvers/game_numpy.py` (for $\mathrm{VI}(F,\Delta_n^m)$ ) |
 
-It contains the solvers, the operator models used to generate random test instances, the experiment driver, the full per-instance logs behind the tables below, and per-iteration cost measurements.
-
-## Repository structure
-
-| Path                         | Description                                                                                                                                                                                                            |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.py`                    | Experiment driver: the two operator models (`NeuralNetworkOperator`, `PayoffTensorOperator`), the solver drivers `run_vi_instance` / `run_game_instance`, and the command-line interface.                              |
-| `solvers/`                   | Solver package: `VI_simplex`, `VI_simplex_product`, and the internal root finder.                                                                                                                                    |
-| `solvers/vi_numpy.py`        | Class `VI_simplex` — solver for $\mathrm{VI}(F,\Delta_n)$.                                                                                                                                                          |
-| `solvers/game_numpy.py`      | Class `VI_simplex_product` — solver for $\mathrm{VI}(F,\Delta_n^m)$.                                                                                                                                                |
-| `solvers/find_root_numpy.py` | Bit-identical reimplementation of `scipy.optimize.elementwise.find_root`, used because it is faster than calling the SciPy function. See the SciPy documentation for the algorithm. |
-| `data/`                      | Per-instance experiment logs behind Tables 1 and 2; see [Data](#data).                                                                                                                                                 |
-| `data/README.md`             | Layout, file naming and log format of the data folder.                                                                                                                                                                 |
-| `docs/cpu_per_iteration.png` | Measured average CPU time per solver iteration; see [Cost per iteration](#cost-per-iteration).                                                                                                                         |
-| `requirements.txt`           | Python dependencies.                                                                                                                                                                                                   |
-| `LICENSE`                    | MIT license.                                                                                                                                                                                                           |
-| `CITATION.cff`               | Citation metadata for the repository.                                                                                                                                                                                  |
+It contains the solvers, the two built-in operator models used to generate random test instances, the experiment driver, the full per-instance logs behind the tables below, and per-iteration cost measurements.
 
 ## Installation
 
@@ -61,11 +50,21 @@ No GPU is needed; the solvers are pure NumPy/SciPy.
 
 ## Quick start
 
+### Try the Colab notebook without installation
+
+A self-contained Colab notebook builds one operator on $\Delta_n^m$ with arbitrary `m, n`,
+selects the solver depending on `m`, and plots the convergence trace.
+It can use the custom operator or the built-in models.
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/shb20tsinghua/FiberBundle_VI/blob/main/examples/quickstart.ipynb)
+
+### From the command line
+
 ```bash
 python main.py
 ```
 
-solves the demo instance — a payoff-tensor game with `m = n = 16` and `R = 256`, seed `0`, barrier corrector — and prints one result line such as
+This solves the demo instance — a payoff-tensor game with `m = n = 16` and `R = 256`, seed `0`, barrier corrector — and prints one result line such as
 
 ```
 |  0  |True   |  983  |9.761908e-06|1.570267e-05|7.528350e-10|  25   |
@@ -73,13 +72,11 @@ solves the demo instance — a payoff-tensor game with `m = n = 16` and `R = 256
 
 (the columns are `seed | success | nit | gap | barrier_sum | G_norm | avoid_n`; see [Solver API](#solver-api)).
 
-From the command line:
-
 ```bash
 # m = 1, nn_F: vi_numpy; hidden layers default to [m*n] = [64]
 python main.py --dimension 1 64 --model nn_F --seed 3
 
-# m = 1, payoff_F: game_numpy; rank defaults to m*n = 8
+# m = 1, payoff_F: vi_numpy; rank defaults to m*n = 8
 python main.py --dimension 1 8 --model payoff_F --seed 0
 
 # m > 1: both models use game_numpy; defaults are [m*n] / m*n
@@ -87,61 +84,95 @@ python main.py --dimension 16 16 --model payoff_F --seed 0
 python main.py --dimension 16 16 --model nn_F --hidden-layers "[256, 128]" --seed 0
 ```
 
-`--model` selects `nn_F` or `payoff_F`. `payoff_F` always uses `game_numpy`, including `m = 1`;
-`nn_F` uses `vi_numpy` when `m = 1` and `game_numpy` when `m > 1`. `solvers/game_numpy.py` can
-handle all model types for arbitrary `m` and `n`, but at `m = 1` `solvers/vi_numpy.py` is faster.
+`--model` selects `nn_F` or `payoff_F`. Solver selection depends on `m`:
+`solvers/vi_numpy.py` when `m = 1`, and `solvers/game_numpy.py` when `m > 1`, for both models.
+`--hidden-layers` configures `nn_F`; `--rank` configures `payoff_F`.
 
 The available options are:
 
-| Option                     | Meaning                                                                            |
-| -------------------------- | ---------------------------------------------------------------------------------- |
-| `--dimension M N`          | dimensions `m n`; required                                                         |
-| `--model {nn_F, payoff_F}` | operator model; required                                                           |
-| `--seed N`                 | random seed of the instance (default `0`)                                          |
-| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (nn_F only; default `[m*n]`) |
-| `--rank R`                 | CP rank of the payoff-tensor model (payoff_F only; default `m*n`)                  |
-| `--kkt`                    | use the KKT corrector instead of the barrier corrector                             |
-| `--threads N\|auto`        | number of BLAS/OpenMP threads (default `1`); `auto` keeps the library defaults     |
-| `--verbose {0,1,2}`        | iteration-trace verbosity (default `0`); levels `1`/`2` write the trace to `data/record.log` |
+| Option                     | Meaning                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--dimension M N`          | dimensions `m n`; required                                                                                                      |
+| `--model {nn_F, payoff_F}` | operator model; required                                                                                                        |
+| `--seed N`                 | random seed of the instance (default `0`)                                                                                       |
+| `--gap-tol T`              | required gap tolerance (default `1e-5`)                                                                                         |
+| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (nn_F only; default `[m*n]`)                                   |
+| `--rank R`                 | CP rank of the payoff-tensor model (payoff_F only; default `m*n`)                                                               |
+| `--kkt`                    | use the KKT corrector instead of the barrier corrector                                                                          |
+| `--threads N\|auto`        | number of BLAS/OpenMP threads (default `1`); `auto` keeps the library defaults; keep it fixed for reproducible iteration counts |
+| `--verbose {0,1,2}`        | iteration-trace verbosity (default `0`); levels `1`/`2` write the trace to `data/record.log`                                    |
 
 `python main.py --help` prints the same list.
 
-To call a solver directly on your own operator, implement a class with a single method
-`value_Jaco(x) -> (F, JF)` returning the operator value and its Jacobian at `x`:
+To call a solver directly on your own operator, see [Custom operators](#custom-operators).
+
+## Repository structure
+
+| Path                         | Description                                                                                                                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`                    | Experiment driver: the two built-in operator models (`NeuralNetworkOperator`, `PayoffTensorOperator`), the solver drivers `run_vi_instance` / `run_game_instance`, and the command-line interface. |
+| `solvers/`                   | Solver package: `VI_simplex`, `VI_simplex_product`, and the internal root finder.                                                                                                                  |
+| `solvers/vi_numpy.py`        | Class `VI_simplex` — solver for $\mathrm{VI}(F,\Delta_n)$.                                                                                                                                         |
+| `solvers/game_numpy.py`      | Class `VI_simplex_product` — solver for $\mathrm{VI}(F,\Delta_n^m)$.                                                                                                                               |
+| `solvers/find_root_numpy.py` | Bit-identical reimplementation of `scipy.optimize.elementwise.find_root`, used because it is faster than calling the SciPy function. See the SciPy documentation for the algorithm.                |
+| `data/`                      | Per-instance experiment logs behind Tables 1 and 2; see [Data](#data).                                                                                                                             |
+| `data/README.md`             | Layout, file naming and log format of the data folder.                                                                                                                                             |
+| `docs/overview.png`          | Convergence of two representative runs; see [Numerical experiments](#numerical-experiments).                                                                                                       |
+| `docs/plot_overview.py`      | Development helper that regenerates `docs/overview.png`; requires matplotlib.                                                                                                                      |
+| `examples/`                  | Self-contained example notebook.                                                                                                                                                                   |
+| `examples/quickstart.ipynb`  | Colab quickstart: arbitrary `m, n`; `m == 1` solver dispatch; custom or built-in operators.                                                                                                        |
+| `docs/cpu_per_iteration.png` | Measured average CPU time per solver iteration; see [Cost per iteration](#cost-per-iteration).                                                                                                     |
+| `requirements.txt`           | Python dependencies.                                                                                                                                                                               |
+| `LICENSE`                    | MIT license.                                                                                                                                                                                       |
+| `CITATION.cff`               | Citation metadata for the repository.                                                                                                                                                              |
+
+## Solver API
+
+Both solvers follow the same interface. For $\mathrm{VI}(F,\Delta_n)$ use
 
 ```python
-import numpy as np
 from solvers import VI_simplex
-
-
-class QuadraticF:
-    """F(sigma) = A sigma + b for a symmetric positive definite A."""
-
-    def __init__(self, A, b):
-        self.A, self.b = A, b
-
-    def value_Jaco(self, sigma):
-        return self.A @ sigma + self.b, self.A
-
-
-n = 5
-rng = np.random.default_rng(0)
-A = rng.standard_normal((n, n))
-A = A.T @ A + n * np.eye(n)
-b = rng.standard_normal(n)
-
-sigma_init = rng.dirichlet(np.ones(n))
-sigma, info = VI_simplex(QuadraticF(A, b)).solve(
-    sigma_init, gap_tol=1e-8, maxnit=50000, maxsubnit=10)
-
-nit, gap, mu_sum, g_norm, avoid_n = info
-print(sigma, gap)
+sigma, info = VI_simplex(operator).solve(iter_init, gap_tol, ...)
 ```
 
-## Operator models
+and for $\mathrm{VI}(F,\Delta_n^m)$ use
 
-`main.py` provides the two random operator models used in the experiments. Both expose the same
-`value_Jaco(x) -> (F, JF)` interface expected by the solvers.
+```python
+from solvers import VI_simplex_product
+pi, info = VI_simplex_product(operator).solve(iter_init, gap_tol, ...)
+```
+
+### `solve(...)` parameters
+
+| Parameter             | Default  | Meaning                                                                                                                                                                                                                                                                          |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iter_init`           | required | Starting point: array of shape `(n,)` in $\Delta_n$ for `VI_simplex`, or `(m, n)` in $\Delta_n^m$ for `VI_simplex_product`.                                                                                                                                                      |
+| `gap_tol`             | required | Required precision. `VI_simplex` stops when $`\mathrm{gap}(\sigma)=\sigma^\top F(\sigma)-\min_a F_a(\sigma)\le\texttt{gap\_tol}`$; `VI_simplex_product` stops when $`\mathrm{gap}_i(\pi)=\pi_i^\top F_i(\pi)-\min_a F_{i,a}(\pi)\le\texttt{gap\_tol}`$ for **every** player $i$. |
+| `efficient_corrector` | `True`   | Which regularised Newton corrector to use. `True`: corrector derived from the barrier problem (faster and recommended). `False`: corrector derived from the perturbed KKT conditions.                                                                                            |
+| `maxnit`              | `50000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                                          |
+| `maxsubnit`           | `10`     | Maximum number of corrector subiterations per predictor step.                                                                                                                                                                                                                    |
+| `verbose`             | `0`      | `0`: silent; `1`: one line per completed corrector; `2`: one line per corrector subiteration. A trace is written only when `record_file` is not `None` and `verbose >= 1`.                                                                                                       |
+| `record_file`         | `None`   | Path used for the iteration-trace log when `verbose >= 1`; `None` disables recording.                                                                                                                                                                                            |
+| `print_preci`         | `6`      | Number of decimal places in the printed trace.                                                                                                                                                                                                                                   |
+
+### Return value
+
+`solve` returns `(solution, info)`:
+
+|            | `VI_simplex`                                       | `VI_simplex_product`                              |
+| ---------- | -------------------------------------------------- | ------------------------------------------------- |
+| `solution` | $\sigma\in\Delta_n$, or `None` if the solver fails | $\pi\in\Delta_n^m$, or `None` if the solver fails |
+| `info[0]`  | `nit` — total iterations                           | `nit`                                             |
+| `info[1]`  | final gap $\mathrm{gap}(\sigma)$                   | final $\max_i \mathrm{gap}_i(\pi)$                |
+| `info[2]`  | `mu_sum` — final $\mathbf{1}^\top\mu$              | final $\max_i \mathbf{1}^\top\tau_i$              |
+| `info[3]`  | `G_norm` — $\lVert G(\sigma,\mu)\rVert$            | `G_norm` — $\lVert G(\pi,\tau)\rVert$             |
+| `info[4]`  | `avoid_n` — number of singularity-avoidance steps  | `avoid_n`                                         |
+
+## Built-in operator models
+
+`main.py` provides the two built-in operator models used in the experiments: a neural network and a
+low-rank payoff tensor. Both expose the same `value_Jaco(x) -> (F, JF)` interface expected by the
+solvers.
 
 ### Neural-network model
 
@@ -171,50 +202,63 @@ F_i(\pi)=\nabla_{\pi_i} f_i(\pi), \qquad \pi_i\in\Delta_n ,$$
 
 reducing the storage from $n^m$ to $Rmn$.
 The entries of $U\in\mathbb{R}^{R\times m\times n\times m}$ are drawn from $N(1, 1/m)$; `rank = m*n`
-is the setting used in the experiments. This model is only defined on the product domain
-$\Delta_n^m$.
+is the setting used in the experiments. The operator is defined on the product domain
+$\Delta_n^m$; at `m = 1` it reduces to an operator on $\Delta_n$.
 
-## Solver API
+## Custom operators
 
-Both solvers follow the same interface. For $\mathrm{VI}(F,\Delta_n)$ use
-
-```python
-from solvers import VI_simplex
-sigma, info = VI_simplex(operator).solve(iter_init, gap_tol, ...)
-```
-
-and for $\mathrm{VI}(F,\Delta_n^m)$ use
+Both solvers accept any object exposing one method,
 
 ```python
-from solvers import VI_simplex_product
-pi, info = VI_simplex_product(operator).solve(iter_init, gap_tol, ...)
+value_Jaco(x) -> (F, JF)
 ```
 
-### `solve(...)` parameters
+where `F` is the operator value and `JF` its Jacobian at `x`.
 
-| Parameter             | Default  | Meaning                                                                                                                                                                                                                                                                      |
-| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `iter_init`           | required | Starting point: array of shape `(n,)` in $\Delta_n$ for `VI_simplex`, or `(m, n)` in $\Delta_n^m$ for `VI_simplex_product`.                                                                                                                                                  |
-| `gap_tol`             | required | Required precision. `VI_simplex` stops when $`\mathrm{gap}(\sigma)=\sigma^\top F(\sigma)-\min_a F_a(\sigma)\le\texttt{gap\_tol}`$; `VI_simplex_product` stops when $`\mathrm{gap}_i(\pi)=\pi_i^\top F_i(\pi)-\min_a F_{i,a}(\pi)\le\texttt{gap\_tol}`$ for **every** player $i$. |
-| `efficient_corrector` | `True`   | Which regularised Newton corrector to use. `True`: corrector derived from the barrier problem (faster and recommended). `False`: corrector derived from the perturbed KKT conditions.                                                                                        |
-| `maxnit`              | `50000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                                      |
-| `maxsubnit`           | `10`     | Maximum number of corrector subiterations per predictor step.                                                                                                                                                                                                                |
-| `verbose`             | `0`      | `0`: silent; `1`: one line per completed corrector; `2`: one line per corrector subiteration. Only takes effect if `record_file` is not `None`.                                                                                                                              |
-| `record_file`         | `None`   | Path used for the iteration-trace log when `verbose >= 1`; `None` disables recording.                                                                                                                                                                                       |
-| `print_preci`         | `6`      | Number of decimal places in the printed trace.                                                                                                                                                                                                                               |
+- For $\mathrm{VI}(F,\Delta_n)$: `x` and `F` have shape `(n,)`, and `JF` has shape `(n, n)`. Use
+  `VI_simplex`.
+- For $\mathrm{VI}(F,\Delta_n^m)$: `x` and `F` have shape `(m, n)`, and `JF` has shape
+  `(m, n, m, n)`, with `JF[i, :, j, :]` the derivative of block `F_i` with respect to block `x_j`.
+  Use `VI_simplex_product`.
 
-### Return value
+In the demo below, `CustomOperator` presents an operator on $\Delta_n^m$ that acts on the variable by flattening `x`
+and then reshaping the result back. When `m = 1`, the operator reduces to an operator on $\Delta_n$,
+and the `if m == 1` block selects the appropriate solver for a `CustomOperator` instance.
 
-`solve` returns `(solution, info)`:
+```python
+import numpy as np
+from solvers import VI_simplex, VI_simplex_product
 
-|            | `VI_simplex`                                       | `VI_simplex_product`                              |
-| ---------- | -------------------------------------------------- | ------------------------------------------------- |
-| `solution` | $\sigma\in\Delta_n$, or `None` if the solver fails | $\pi\in\Delta_n^m$, or `None` if the solver fails |
-| `info[0]`  | `nit` — total iterations                           | `nit`                                             |
-| `info[1]`  | final gap $\mathrm{gap}(\sigma)$                   | final $\max_i \mathrm{gap}_i(\pi)$                |
-| `info[2]`  | `mu_sum` — final $\mathbf{1}^\top\mu$              | final $\max_i \mathbf{1}^\top\tau_i$              |
-| `info[3]`  | `G_norm` — $\lVert G(\sigma,\mu)\rVert$            | `G_norm` — $\lVert G(\pi,\tau)\rVert$             |
-| `info[4]`  | `avoid_n` — number of singularity-avoidance steps  | `avoid_n`                                         |
+
+class CustomOperator:
+    """F(x) = b + A x + x**2 / 2, with x flattened internally."""
+
+    def __init__(self, A, b):
+        self.A, self.b = A, b
+
+    def value_Jaco(self, x):
+        shape = x.shape
+        flat = x.ravel()
+        values = self.b + self.A @ flat + 0.5 * flat**2
+        jacobian = self.A.copy()
+        jacobian[np.diag_indices_from(jacobian)] += flat
+        return values.reshape(shape), jacobian.reshape(shape + shape)
+
+
+m, n = 3, 5          # m = 1: reduced simplex case; m > 1: product case
+rng = np.random.default_rng(0)
+A = rng.standard_normal((m * n, m * n))
+b = rng.standard_normal(m * n)
+vi_problem = CustomOperator(A, b)
+
+if m == 1:
+    x_init = rng.dirichlet(np.ones(n))
+    solution, info = VI_simplex(vi_problem).solve(x_init, gap_tol=1e-8)
+else:
+    x_init = rng.dirichlet(np.ones(n), size=(m,))
+    solution, info = VI_simplex_product(vi_problem).solve(x_init, gap_tol=1e-8)
+print(info)
+```
 
 ## Numerical experiments
 
@@ -260,7 +304,7 @@ as the depth increases, which is why the iteration count generally falls with `d
   - *Payoff-tensor model:* low-rank CP payoff with `R = mn`, `U ~ N(1, 1/m)`.
 - **Starting point:** uniformly random in $\Delta_n^m$.
 - **Precision:** $\mathrm{gap}_i(\pi)\le 1\text{e-}5$ for every player.
-- **Corrector:** barrier corrector only (`efficient_corrector=True`), which is faster in the experiments of Paper 1 (see Table 1).
+- **Corrector:** barrier corrector only (`efficient_corrector=True`), the faster choice in the experiments of Paper 1 (see Table 1).
 - **Dimensions:** fixed player number `m = 8` with action number `n` from 2 to 32; fixed action number `n = 8` with player number `m` from 2 to 32; fixed total dimension `mn = 256` with `(m, n)` from `(2, 128)` to `(128, 2)`.
 - **Instances:** 200 per setting, 5600 in total. The algorithm converged on every instance.
 
@@ -301,14 +345,14 @@ one BLAS thread (the driver's default), `verbose=0`, and `gap_tol=1e-5`.
 
 In the left panel (simplex VI with the neural-network operator), `c` grows smoothly with the
 dimension `n` for both correctors; the barrier corrector is slightly more expensive because it solves
-a scalar root per iteration. In the right panel (game VI with the barrier corrector), the total
+a scalar root per iteration. In the right panel (product-of-simplex VI with the barrier corrector), the total
 dimension is fixed at `m*n = 256`, so the comparison isolates the shape: the payoff-tensor cost grows
 strongly with `m`, because the Jacobian assembly cost grows with the number of player blocks, while
 the neural-network operator — with architecture `[256, 256, 256]` for every shape in this test — stays
 at about constant.
 
 **Caveats.** `c` is hardware-dependent (reference machine: Intel Tiger Lake laptop, 8 logical cores,
-Windows, NumPy 2.5/OpenBLAS, SciPy 1.18, Python 3.14); expect ±20–30 % on another machine. Use the
+Windows, NumPy 2.5/OpenBLAS, SciPy 1.18, Python 3.14); expect ±20–30% on another machine. Use the
 values as an order-of-magnitude guide, not as a benchmark.
 
 ## Data
@@ -352,7 +396,8 @@ formatted to one decimal place. The logs contain 12,000 rows in total (6,400 sim
 
 - Every instance is fully determined by its random seed: the operator parameters and the starting
   point are generated from `np.random.seed(seed)`, and the singularity-avoidance step draws from the
-  same seeded generator. Runs are therefore deterministic on a given platform and library version.
+  same seeded generator. Runs are therefore deterministic on a given platform, library version, and
+  BLAS thread count.
 - A full run over all settings of the two tables means 12,000 solver calls; expect hours on a laptop.
   The demo `python main.py` takes well under a minute.
 
@@ -385,3 +430,8 @@ If you use this code, please cite the corresponding papers:
 ## License
 
 Released under the [MIT License](LICENSE).
+
+---
+
+If you find this repository useful, a ⭐ is much appreciated. Questions and suggestions are welcome
+in the [issue tracker](https://github.com/shb20tsinghua/FiberBundle_VI/issues).

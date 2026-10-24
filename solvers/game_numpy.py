@@ -233,13 +233,13 @@ class VI_simplex_product:
         values, reduced, gaps, projector, bundle_jacobian = self._cache_entries
         return values, reduced, gaps, projector, bundle_jacobian.copy()
 
-    def _compute_corrector(self, pi, tau):
+    def _compute_corrector(self, pi, tau, corrector_tol):
         """One regularised Newton corrector step for fixed ``tau``."""
         values, reduced, gaps, projector, bundle_jacobian = self._evaluate_state(pi)
         tau_isum = tau.sum(axis=-1)
         residual = np.matvec(projector.swapaxes(1, 2), pi * values - tau).ravel()
         residual_norm = np.sqrt(residual.dot(residual))
-        if residual_norm <= self._tau_floor:
+        if residual_norm <= corrector_tol:
             return None, residual_norm, gaps
         bundle_jacobian[self._diagonal] += np.repeat(tau_isum, self._n)
         if self._efficient_corrector:
@@ -284,18 +284,19 @@ class VI_simplex_product:
         pi_next = pi * np.exp(-tangent.reshape((self._m, self._n)) * eta * direction)
         pi_next /= pi_next.sum(axis=-1, keepdims=True)
 
+        corrector_tol = min(_TAU_FLOOR, tau.min())
         corrected = False
         for subnit in range(self._maxsubnit):
             if self._nit > self._maxnit:
                 raise UserWarning("Maximum Iteration Number Exceeded!")
-            step, residual_norm, gaps = self._compute_corrector(pi_next, tau)
+            step, residual_norm, gaps = self._compute_corrector(pi_next, tau, corrector_tol)
             self._record.nit = self._nit
             self._record.gap = gaps.max()
             self._record.G_norm = residual_norm
             self._record.d_sign = int(direction)
             if self._verbose >= 2:
                 self._write_record()
-            corrected = residual_norm <= self._tau_floor
+            corrected = step is None
             if corrected:
                 break
             pi_next = pi_next * np.exp(-step)
