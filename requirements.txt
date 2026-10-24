@@ -3,5 +3,5 @@
 #
 # NumPy >= 2.0 is required: solvers/game_numpy.py uses np.vecdot and np.matvec.
 # SciPy is used for its LU factorisation/solve and the scalar Brent root finder.
-numpy>=2.0
+numpy>=2.2
 scipy>=1.10

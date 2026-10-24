@@ -14,7 +14,7 @@ The method requires no monotonicity or other structural assumptions: it follows 
 
 **Contents:** [Overview](#overview) · [Installation](#installation) · [Quick start](#quick-start) · [Repository structure](#repository-structure) · [Solver API](#solver-api) · [Built-in operator models](#built-in-operator-models) · [Custom operators](#custom-operators) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Data](#data) · [Citation](#citation) · [License](#license)
 
-Python ≥ 3.9 · NumPy ≥ 2.0 · SciPy ≥ 1.10 · MIT License
+Python ≥ 3.9 · NumPy ≥ 2.2 · SciPy ≥ 1.10 · MIT License
 
 ## Overview
 
@@ -43,7 +43,7 @@ pip install -r requirements.txt
 Requirements:
 
 - Python ≥ 3.9 (tested with Python 3.14)
-- NumPy ≥ 2.0 (`np.vecdot`, `np.matvec` are used in `solvers/game_numpy.py`)
+- NumPy ≥ 2.2 (`np.vecdot` and `np.matvec` are used in `solvers/game_numpy.py`)
 - SciPy ≥ 1.10 (`scipy.linalg.lu_factor`, `scipy.linalg.lu_solve`, `scipy.optimize.brentq`)
 
 No GPU is needed; the solvers are pure NumPy/SciPy.
