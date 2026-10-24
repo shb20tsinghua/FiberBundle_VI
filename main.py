@@ -65,6 +65,17 @@ def _threads_from_command_line(arguments: Sequence[str]) -> int | None:
     return _DEFAULT_BLAS_THREADS
 
 
+def _positive_int(value: str) -> int:
+    """argparse type for a positive integer."""
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {parsed}")
+    return parsed
+
+
 def _parse_layer_list(value: str) -> list[int]:
     """Parse the bracketed list form of ``--hidden-layers``."""
     text = value.strip()
@@ -320,14 +331,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Solve one instance: payoff_F always uses game_numpy; nn_F uses "
                     "vi_numpy when m = 1 and game_numpy when m > 1.")
-    parser.add_argument("--dimension", type=int, nargs=2, required=True, metavar=("M", "N"),
-                        help="dimensions m n")
+    parser.add_argument("--dimension", type=_positive_int, nargs=2, required=True,
+                        metavar=("M", "N"), help="dimensions m n")
     parser.add_argument("--model", choices=("nn_F", "payoff_F"), required=True,
                         help="operator model: nn_F (neural network) or payoff_F (payoff tensor)")
     parser.add_argument("--seed", type=int, default=0, help="random seed of the instance (default 0)")
     parser.add_argument("--hidden-layers", type=_parse_layer_list, metavar="LIST",
                         help="bracketed list of hidden-layer widths, e.g. '[8, 4]' or '[]' (default [m*n])")
-    parser.add_argument("--rank", type=int,
+    parser.add_argument("--rank", type=_positive_int,
                         help="CP rank of the payoff-tensor model (default: m*n)")
     parser.add_argument("--kkt", action="store_true",
                         help="use the KKT corrector instead of the barrier corrector")
@@ -335,7 +346,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         metavar="N|auto",
                         help="number of BLAS/OpenMP threads (default 1); 'auto' keeps the library defaults")
     parser.add_argument("--verbose", type=int, default=0, choices=(0, 1, 2),
-                        help="iteration-trace verbosity (default 0)")
+                        help="iteration-trace verbosity (default 0); 1 or 2 write to data/record.log")
     return parser.parse_args(argv)
 
 
@@ -350,8 +361,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(arguments)
     efficient_corrector = not args.kkt
     m, n = args.dimension
-    if m < 1 or n < 1:
-        raise SystemExit("--dimension expects positive integers m n")
 
     if args.model == "payoff_F":
         if args.hidden_layers is not None:

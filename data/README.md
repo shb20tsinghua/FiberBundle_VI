@@ -8,7 +8,8 @@ repository [README](../README.md).
 | `data_vi/`   | $\mathrm{VI}(F,\Delta_n)$ — neural-network operator                      | 32    | 6,400     |
 | `data_game/` | $\mathrm{VI}(F,\Delta_n^m)$ — neural-network and payoff-tensor operators | 28    | 5,600     |
 
-Every file holds exactly 200 rows, one per seed `0 ... 199`.
+Every file has a header line followed by exactly 200 data rows, one per seed `0 ... 199`.
+The rows are written in completion order, so the seeds are not necessarily sorted.
 
 | Folder       | Pattern                                  | Meaning                                                                                             |
 | ------------ | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |

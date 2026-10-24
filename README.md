@@ -76,17 +76,20 @@ solves the demo instance — a payoff-tensor game with `m = n = 16` and `R = 256
 From the command line:
 
 ```bash
-# simplex VI: m = 1, network operator; hidden layers default to [m*n] = [64]
-python main.py --dimension 1 64 --model nn --seed 3
+# m = 1, nn_F: vi_numpy; hidden layers default to [m*n] = [64]
+python main.py --dimension 1 64 --model nn_F --seed 3
 
-# payoff-tensor game: 16 players, 16 actions; rank defaults to m*n = 256
-python main.py --dimension 16 16 --model payoff --seed 0
+# m = 1, payoff_F: game_numpy; rank defaults to m*n = 8
+python main.py --dimension 1 8 --model payoff_F --seed 0
 
-# override the default hidden layers with two layers [256, 128]
-python main.py --dimension 16 16 --model nn --hidden-layers "[256, 128]" --seed 0
+# m > 1: both models use game_numpy; defaults are [m*n] / m*n
+python main.py --dimension 16 16 --model payoff_F --seed 0
+python main.py --dimension 16 16 --model nn_F --hidden-layers "[256, 128]" --seed 0
 ```
 
-`solvers/game_numpy.py` can handle all model types for arbitrary `m` and `n`, but when `m = 1`, `solvers/vi_numpy.py` can handle the problem as well and is faster, so we route `nn_F` with `m = 1` to `VI_simplex`.
+`--model` selects `nn_F` or `payoff_F`. `payoff_F` always uses `game_numpy`, including `m = 1`;
+`nn_F` uses `vi_numpy` when `m = 1` and `game_numpy` when `m > 1`. `solvers/game_numpy.py` can
+handle all model types for arbitrary `m` and `n`, but at `m = 1` `solvers/vi_numpy.py` is faster.
 
 The available options are:
 
@@ -95,11 +98,11 @@ The available options are:
 | `--dimension M N`          | dimensions `m n`; required                                                         |
 | `--model {nn_F, payoff_F}` | operator model; required                                                           |
 | `--seed N`                 | random seed of the instance (default `0`)                                          |
-| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (default `[m*n]`) |
-| `--rank R`                 | CP rank of the payoff-tensor model (default `m*n`)                                 |
+| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (nn_F only; default `[m*n]`) |
+| `--rank R`                 | CP rank of the payoff-tensor model (payoff_F only; default `m*n`)                  |
 | `--kkt`                    | use the KKT corrector instead of the barrier corrector                             |
 | `--threads N\|auto`        | number of BLAS/OpenMP threads (default `1`); `auto` keeps the library defaults     |
-| `--verbose {0,1,2}`        | iteration-trace verbosity (default `0`)                                            |
+| `--verbose {0,1,2}`        | iteration-trace verbosity (default `0`); levels `1`/`2` write the trace to `data/record.log` |
 
 `python main.py --help` prints the same list.
 
@@ -197,7 +200,7 @@ pi, info = VI_simplex_product(operator).solve(iter_init, gap_tol, ...)
 | `maxnit`              | `50000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                                      |
 | `maxsubnit`           | `10`     | Maximum number of corrector subiterations per predictor step.                                                                                                                                                                                                                |
 | `verbose`             | `0`      | `0`: silent; `1`: one line per completed corrector; `2`: one line per corrector subiteration. Only takes effect if `record_file` is not `None`.                                                                                                                              |
-| `record_file`         | `None`   | Path of the iteration-trace log (`None` disables recording).                                                                                                                                                                                                                 |
+| `record_file`         | `None`   | Path used for the iteration-trace log when `verbose >= 1`; `None` disables recording.                                                                                                                                                                                       |
 | `print_preci`         | `6`      | Number of decimal places in the printed trace.                                                                                                                                                                                                                               |
 
 ### Return value
@@ -324,7 +327,8 @@ data/
     └── payoff_<m>_<n>.log        #   payoff-tensor operator, R = m*n
 ```
 
-Every per-configuration `.log` file has a header line followed by one row per instance:
+Every per-configuration `.log` file has a header line followed by one row per instance.
+The row format is:
 
 ```text
 | 5  |True   |  187  |9.834558e-06|4.773111e-05|2.168071e-12|   0   |
