@@ -1,16 +1,20 @@
 # Fixed-Point Bundle Method for Variational Inequalities and Game Equilibria
 
+[![arXiv 2606.00778](https://img.shields.io/badge/arXiv-2606.00778-b31b1b)](https://arxiv.org/abs/2606.00778)
+[![arXiv 2609.16158](https://img.shields.io/badge/arXiv-2609.16158-b31b1b)](https://arxiv.org/abs/2609.16158)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/shb20tsinghua/FiberBundle_VI/blob/main/examples/quickstart.ipynb)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Reference implementation of the *fixed-point bundle* predictor–corrector path-following method for
 
 - variational inequalities on the simplex, $\mathrm{VI}(F,\Delta_n)$, and
-- variational inequalities on the product of simplices, $\mathrm{VI}(F,\Delta_n^m)$, which include the Nash equilibrium problem of $m$-player $n$-action games.
+- variational inequalities on the product of simplices, $\mathrm{VI}(F,\Delta_n^m)$, which include the Nash equilibrium problem of $m$-player $n$-action general-sum games.
 
 The method requires no monotonicity or other structural assumptions: it follows special central paths on a fiber bundle from an arbitrary starting point, detects and avoids singularities, and guarantees global linear convergence.
 
 ![Convergence of the path-following iteration](docs/overview.png)
 
-*Convergence of two representative runs; reproducible with `docs/plot_overview.py`
-(seed 2, gap_tol = 1e-10).*
+*Convergence of two representative runs; reproducible with `python docs/plot_overview.py`.*
 
 **Contents:** [Overview](#overview) · [Installation](#installation) · [Quick start](#quick-start) · [Repository structure](#repository-structure) · [Solver API](#solver-api) · [Built-in operator models](#built-in-operator-models) · [Custom operators](#custom-operators) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Data](#data) · [Citation](#citation) · [License](#license)
 
@@ -20,9 +24,9 @@ Python ≥ 3.9 · NumPy ≥ 2.2 · SciPy ≥ 1.10 · MIT License
 
 The repository accompanies two papers:
 
-| #   | Paper                                                                                                                                                                                                                | Implementation                                             |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solvers/vi_numpy.py` (for $\mathrm{VI}(F,\Delta_n)$ )     |
+| #   | Paper                                                                                                                                               | Implementation                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solvers/vi_numpy.py` (for $\mathrm{VI}(F,\Delta_n)$ ) |
 | 2   | *The fixed-point bundle method over product-of-simplex domains arising from game equilibria* — [arXiv:2609.16158](https://arxiv.org/abs/2609.16158), [Optimization Online](https://optimization-online.org/?p=36751) | `solvers/game_numpy.py` (for $\mathrm{VI}(F,\Delta_n^m)$ ) |
 
 It contains the solvers, the two built-in operator models used to generate random test instances, the experiment driver, the full per-instance logs behind the tables below, and per-iteration cost measurements.
@@ -402,8 +406,6 @@ formatted to one decimal place. The logs contain 12,000 rows in total (6,400 sim
   The demo `python main.py` takes well under a minute.
 
 ## Citation
-
-If you use this code, please cite the corresponding papers:
 
 ```bibtex
 @misc{paper1,
