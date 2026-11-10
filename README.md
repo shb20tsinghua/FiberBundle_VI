@@ -154,7 +154,7 @@ solution, info = FP_VI(operator).solve(iter_init, gap_tol, ...)
 | Parameter             | Default  | Meaning                                                                                                                                                                                                                                                                    |
 | --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `iter_init`           | required | Starting point: array of shape `(m, n)` in $\Delta_n^m$, with $m \ge 1$. The simplex case uses $m = 1$, i.e. shape `(1, n)`.                                                                                                                                               |
-| `gap_tol`             | required | Required precision. The solver stops when $\max_i \mathrm{gap}_i(\pi) \le \texttt{gap\_tol}$, where $\mathrm{gap}_i(\pi) = \pi_i^\top F_i(\pi) - \min_a F_{i,a}(\pi)$; for $m = 1$ this is $\mathrm{gap}(\sigma) = \sigma^\top F(\sigma) - \min_a F_a(\sigma)$.           |
+| `gap_tol`             | required | Required precision. The solver stops when $`\max_i \mathrm{gap}_i(\pi) \le \texttt{gap\_tol}`$, where $`\mathrm{gap}_i(\pi) = \pi_i^\top F_i(\pi) - \min_a F_{i,a}(\pi)`$; for $m = 1$ this is $`\mathrm{gap}(\sigma) = \sigma^\top F(\sigma) - \min_a F_a(\sigma)`$.           |
 | `efficient_corrector` | `True`   | Which regularised Newton corrector to use. `True`: corrector derived from the barrier problem (faster and recommended). `False`: corrector derived from the perturbed KKT conditions.                                                                                      |
 | `maxnit`              | `10000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                                    |
 | `record_file`         | `None`   | Path of the iteration trace. When it is not `None`, the file is created and one row is written per iteration; `None` disables recording.                                                                                                                                   |
@@ -196,8 +196,8 @@ nn_F(seed, layer_widths, activation)
 
 A fully connected network with widths `layer_widths = [dim, *hidden_layers, dim]` and activation
 `0 = tanh`, `1 = sigmoid`, `2 = linear`. Weights use the rescaled Xavier normal distribution
-$N(0, 2/(\text{fan\_in} + \text{fan\_out}))$ (standard deviation
-$1/\sqrt{(\text{fan\_in}+\text{fan\_out})/2}$), which keeps the tanh activations out of saturation; biases are
+$`N(0, 2/(\text{fan\_in} + \text{fan\_out}))`$ (standard deviation
+$`1/\sqrt{(\text{fan\_in}+\text{fan\_out})/2}`$), which keeps the tanh activations out of saturation; biases are
 drawn from $N(0, 10^{-4})$ (standard deviation `1e-2`). The model represents a general real-analytic
 operator and can be used on either domain: `dim = n` for $\Delta_n$, `dim = m*n` for $\Delta_n^m$.
 The driver builds it as `nn_F(seed, [m*n, *hidden_layers, m*n], 0)`.
