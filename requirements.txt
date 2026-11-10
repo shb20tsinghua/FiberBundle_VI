@@ -1,7 +1,8 @@
 # Runtime dependencies of FiberBundle_VI.
 # Tested with Python 3.14, NumPy 2.5.2, and SciPy 1.18.1.
 #
-# NumPy >= 2.0 is required: solvers/game_numpy.py uses np.vecdot and np.matvec.
-# SciPy is used for its LU factorisation/solve and the scalar Brent root finder.
+# NumPy >= 2.2 is required: solver/fpvi_numpy.py uses np.vecdot and np.matvec.
+# SciPy is used for its LU factorisation/solve (scipy.linalg.lu_factor,
+# scipy.linalg.lu_solve) and the scalar Brent root finder (scipy.optimize.brentq).
 numpy>=2.2
 scipy>=1.10

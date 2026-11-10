@@ -14,8 +14,9 @@ env/
 .mypy_cache/
 .ruff_cache/
 
-# Iteration trace written by `python main.py` when verbose >= 1.
-# The experiment logs under data/data_vi*/ and data/data_game*/ are tracked.
+# Iteration trace written by `python main.py --record`.
+# The per-instance experiment logs under data/singlelevel_derivfree/,
+# data/singlelevel_derivbased/ and data/twolevel_derivbased/ are tracked.
 data/record.log
 
 # OS / editor files

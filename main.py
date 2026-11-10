@@ -1,15 +1,21 @@
-"""Experiment driver for the fixed-point bundle solvers.
+"""Experiment driver and command-line interface for the solver.
 
 This module contains
 
-* the two random operator models used in the papers
-  (:class:`NeuralNetworkOperator`, :class:`PayoffTensorOperator`);
-* driver that solve a instance and format its result line;
+* the driver that builds one instance of ``VI(F, Delta_n^m)`` with a built-in
+  random operator and solves it with the path-following solver;
+* the result-line formatting used by the data files;
 * a small command-line interface for running one instance.
 
-Running ``python main.py`` without arguments solves the demo instance used in
-the README.
+``F`` is either the neural-network operator :class:`builtin_model.nn_F` or the
+low-rank payoff-tensor operator :class:`builtin_model.payoff_F`.  Both are
+solved by ``FP_VI``; the simplex case ``m = 1`` is a special case of the
+product domain ``Delta_n^m``.
 
+Running ``python main.py`` without arguments solves the demo instance used in
+the README: a payoff-tensor game with ``m = n = 16`` players/actions, CP rank
+``R = 256`` and seed ``0``, solved with the barrier corrector.  Add ``--record``
+to write the per-iteration trace to ``data/record.log``.
 """
 from __future__ import annotations
 
@@ -133,13 +139,11 @@ if __name__ == "__main__":
         pass
 
 import numpy as np
-from numpy.typing import NDArray
 
-from solvers import VI_simplex, VI_simplex_product
+from builtin_model import nn_F, payoff_F, DerivFreeWrapper
+from solver import FP_VI
 
 np.seterr(divide="ignore", invalid="ignore", over="ignore")
-
-FloatArray = NDArray[np.float64]
 
 # --------------------------------------------------------------------- paths
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -150,125 +154,12 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # ------------------------------------------------------------ experiment setup
 PRINT_PRECISION = 6
 GAP_TOLERANCE = 1e-5
-MAX_ITERATIONS = 50_000
-MAX_SUBITERATIONS = 10
+MAX_ITERATIONS = 10_000
 
-# Rescaled Xavier normal initialisation: standard deviation sqrt(2/(fan_in+fan_out)).
-_WEIGHT_INIT_SCALE = lambda fan_in, fan_out: 1 / np.sqrt((fan_in + fan_out) / 2)
-_BIAS_INIT_SCALE = 1e-2
-
-ACTIVATIONS = (np.tanh, lambda x: 1 / (1 + np.exp(-x)), lambda x: x)
-ACTIVATION_GRADIENTS = (lambda h: 1 - h ** 2, lambda h: h * (1 - h), lambda h: np.ones_like(h))
-
-
-class NeuralNetworkOperator:
-    """Tanh/sigmoid/linear fully connected network used as a random operator ``F``.
-
-    Parameters
-    ----------
-    seed : int
-        Seed of the random parameter draw.
-    layer_widths : sequence of int
-        Layer widths ``[dim, *hidden, dim]``.
-    activation : int
-        ``0`` tanh, ``1`` sigmoid, ``2`` linear.
-
-    Notes
-    -----
-    Weights use the Xavier normal distribution, which keeps the tanh
-    activations out of saturation and therefore keeps ``F`` complex.  Biases
-    are drawn from ``N(0, 1e-2^2)``.  The model can be used on ``Delta_n``
-    (``dim = n``) and on ``Delta_n^m`` (``dim = m*n``).
-    """
-
-    def __init__(self, seed: int, layer_widths: Sequence[int], activation: int) -> None:
-        np.random.seed(seed)
-        widths = list(layer_widths)
-        self._weights = [
-            np.random.normal(loc=0.0, scale=_WEIGHT_INIT_SCALE(widths[i], widths[i + 1]),
-                             size=(widths[i + 1], widths[i]))
-            for i in range(len(widths) - 1)
-        ]
-        self._biases = [
-            np.random.normal(loc=0.0, scale=_BIAS_INIT_SCALE, size=widths[i + 1])
-            for i in range(len(widths) - 1)
-        ]
-        self._activation = ACTIVATIONS[activation]
-        self._activation_gradient = ACTIVATION_GRADIENTS[activation]
-
-    def value_Jaco(self, x: FloatArray) -> tuple[FloatArray, FloatArray]:
-        """Return ``F(x)`` and its Jacobian, both with the shape of ``x``."""
-        hidden = x.ravel()
-        forward_cache = [hidden]
-        for weight, bias in zip(self._weights, self._biases):
-            hidden = self._activation(np.dot(weight, hidden) + bias)
-            forward_cache.append(hidden)
-        jacobian = self._activation_gradient(forward_cache[-1])[:, None] * self._weights[-1]
-        for i in reversed(range(len(self._weights) - 1)):
-            jacobian *= self._activation_gradient(forward_cache[i + 1])[None, :]
-            jacobian = np.dot(jacobian, self._weights[i])
-        return hidden.reshape(x.shape), jacobian.reshape(x.shape + x.shape)
-
-
-class PayoffTensorOperator:
-    """Low-rank CP payoff operator of a finite normal-form game.
-
-    For ``m`` players and ``n`` actions the payoff function is
-
-        f_i(pi) = sum_{r=1}^{R} prod_{j=1}^{m} (U_{r,i,j} pi_j),
-
-    and the operator is ``F_i(pi) = grad_{pi_i} f_i(pi)``.  The tensor entries
-    are drawn from ``N(1, 1/m)``; ``R = m*n`` is the rank used in the experiment.
-    The model is defined on ``Delta_n^m``; at ``m = 1`` it reduces to an operator
-    on ``Delta_n``.
-    """
-
-    def __init__(self, seed: int, players: int, actions: int, rank: int) -> None:
-        np.random.seed(seed)
-        self._payoff = np.random.normal(loc=1.0, scale=1 / np.sqrt(players),
-                                        size=(rank, players, actions, players))
-        self._players = players
-        self._actions = actions
-        self._payoff_t = self._payoff.transpose(0, 1, 3, 2)
-        self._diagonal = self._payoff.diagonal(axis1=1, axis2=3).transpose(0, 2, 1)
-        self._diagonal_t = np.ascontiguousarray(self._diagonal.transpose(1, 2, 0))
-        self._payoff_permuted = np.ascontiguousarray(self._payoff.transpose(3, 0, 1, 2))
-        self._row_index = np.arange(players)
-        self._scaled = np.empty((players, rank, players))
-        self._weight = np.empty((rank, players * actions))
-        self._weight_blocks = self._weight.reshape(rank, players, actions)
-        self._jacobian = np.empty((players, actions, players * actions))
-        # Bound the temporary of the broadcast division below (~2 M doubles).
-        self._block_size = max(1, min(players, (1 << 21) // (8 * rank * players)))
-
-    def value_Jaco(self, pi: FloatArray) -> tuple[FloatArray, FloatArray]:
-        """Return ``F(pi)`` and its Jacobian, both with the shape of ``pi``."""
-        shape = pi.shape
-        pi = np.atleast_2d(pi)
-        players, actions = self._players, self._actions
-        contracted = np.matmul(self._payoff_t, pi[..., None])[..., 0]
-        product = np.prod(contracted, axis=1)
-        diagonal = contracted.diagonal(axis1=1, axis2=2)
-        values = np.einsum("ri,rip->ip", product / diagonal, self._diagonal)
-
-        scaled = self._scaled
-        for start in range(0, players, self._block_size):
-            stop = min(start + self._block_size, players)
-            np.divide(product[:, start:stop].T[..., None],
-                      np.einsum("ri,rji->irj", diagonal[:, start:stop],
-                                contracted[:, :, start:stop]),
-                      out=scaled[start:stop])
-        scaled[self._row_index, :, self._row_index] = 0
-
-        weight = self._weight
-        blocks = self._weight_blocks
-        jacobian = self._jacobian
-        permuted = self._payoff_permuted
-        diagonal_t = self._diagonal_t
-        for i in range(players):
-            np.einsum("rjq,rj->rjq", permuted[i], scaled[i], out=blocks)
-            np.matmul(diagonal_t[i], weight, out=jacobian[i])
-        return values.reshape(shape), jacobian.reshape(shape + shape)
+# Names of the built-in operators accepted by the command line.
+MODEL_NN = "nn_F"
+MODEL_PAYOFF = "payoff_F"
+MODELS = (MODEL_NN, MODEL_PAYOFF)
 
 
 # ------------------------------------------------------------------ formatting
@@ -281,103 +172,111 @@ def format_result(seed: int, result, summary: Iterable) -> str:
     return f"|{seed:^5d}|{repr(result is not None):7}|{formatted}|\n"
 
 
-# ------------------------------------------------------------- single instances
-def run_vi_instance(seed: int, n: int, hidden_layers: Sequence[int] | None = None,
-                    verbose: int = 0, efficient_corrector: bool = True,
-                    gap_tol: float = GAP_TOLERANCE, payoff_game: bool = False,
-                    rank: int | None = None) -> str:
-    """Solve one seeded ``VI(F, Delta_n)`` instance and return its result line.
+# ------------------------------------------------------------- run instances
+def run_instance(seed: int, dimension: tuple[int, int], model: str = MODEL_PAYOFF,
+                 hidden_layers: Sequence[int] | None = None, rank: int | None = None,
+                 record: bool = False, efficient_corrector: bool = True,
+                 gap_tol: float = GAP_TOLERANCE,
+                 derivative_free: bool = False) -> str:
+    """Solve one seeded instance of ``VI(F, Delta_n^m)`` and return its result line.
 
-    ``hidden_layers`` defaults to ``[n]`` and configures the neural-network
-    operator.  With ``payoff_game=True`` the payoff-tensor operator with
-    ``players = 1`` is used instead; its rank defaults to ``n``.
-    """
-    if payoff_game:
-        if hidden_layers is not None:
-            raise ValueError("hidden_layers is not used by the payoff-tensor model")
-        if rank is None:
-            rank = n
-        if not isinstance(rank, numbers.Integral) or int(rank) < 1:
-            raise ValueError("rank must be a positive integer")
-        operator = PayoffTensorOperator(seed, 1, n, int(rank))
-    else:
-        if rank is not None:
-            raise ValueError("rank is only used by the payoff-tensor model")
-        if hidden_layers is None:
-            hidden_layers = [n]
-        else:
-            hidden_layers = _validated_hidden_layers(hidden_layers)
-        operator = NeuralNetworkOperator(seed, [n, *hidden_layers, n], 0)
+    ``model`` selects the built-in operator:
 
-    np.random.seed(seed)
-    initial_point = np.random.dirichlet(np.ones(n))
-    solution, summary = VI_simplex(operator).solve(
-        initial_point, gap_tol=gap_tol, efficient_corrector=efficient_corrector,
-        maxnit=MAX_ITERATIONS, maxsubnit=MAX_SUBITERATIONS, verbose=verbose,
-        record_file=RECORD_FILE, print_preci=PRINT_PRECISION)
-    return format_result(seed, solution, summary)
+    * ``"nn_F"`` builds ``nn_F(seed, [m*n, *hidden_layers, m*n], 0)``; the
+      hidden layers default to ``[m*n]``;
+    * ``"payoff_F"`` builds ``payoff_F(seed, m, n, rank)``; the CP rank
+      defaults to ``m*n``.
 
+    ``hidden_layers`` and ``rank`` configure different models, so passing the
+    option of the other model is an error.
 
-def run_game_instance(seed: int, dimension: tuple[int, int],
-                      hidden_layers: Sequence[int] | None = None, verbose: int = 0,
-                      payoff_game: bool = True, efficient_corrector: bool = True,
-                      rank: int | None = None, gap_tol: float = GAP_TOLERANCE) -> str:
-    """Solve one seeded ``VI(F, Delta_n^m)`` instance and return its result line.
+    With ``derivative_free=True`` the operator is wrapped in
+    :class:`builtin_model.DerivFreeWrapper`, so the solver only receives
+    function values plus a Broyden Jacobian estimate.  With ``record=True`` the
+    per-iteration trace is written to ``data/record.log``; otherwise nothing is
+    recorded.
 
-    The payoff-tensor model is configured by ``rank`` (the CP rank ``R``, which
-    defaults to ``m*n``); the neural-network model is configured by
-    ``hidden_layers`` (which defaults to ``[m*n]``).  The two are different
-    quantities, so passing the option of the other model is an error.
+    Parameters
+    ----------
+    seed : int
+        Seed of the operator parameters and of the starting point.
+    dimension : tuple of int
+        ``(m, n)``: number of players and of actions per player.
+    model : {"nn_F", "payoff_F"}
+        Which built-in operator to use.
+    hidden_layers : sequence of int, optional
+        Hidden-layer widths of the neural network (``nn_F`` only; default
+        ``[m*n]``).
+    rank : int, optional
+        CP rank of the payoff tensor (``payoff_F`` only; default ``m*n``).
+    record : bool
+        ``True`` writes the per-iteration trace to ``data/record.log``;
+        ``False`` (the default) disables recording.
+    efficient_corrector : bool
+        ``True`` uses the barrier corrector, ``False`` the KKT corrector.
+    gap_tol : float
+        Required gap tolerance.
+    derivative_free : bool
+        Replace the analytic Jacobian by the Broyden approximation.
     """
     m, n = dimension
-    if payoff_game:
-        if hidden_layers is not None:
-            raise ValueError("hidden_layers is not used by the payoff-tensor model")
-        if rank is None:
-            rank = m * n
-        if not isinstance(rank, numbers.Integral) or int(rank) < 1:
-            raise ValueError("rank must be a positive integer")
-        operator = PayoffTensorOperator(seed, m, n, int(rank))
-    else:
+    if model == MODEL_NN:
         if rank is not None:
-            raise ValueError("rank is only used by the payoff-tensor model")
+            raise ValueError("rank is only used by the payoff_F model")
         if hidden_layers is None:
             hidden_layers = [m * n]
         else:
             hidden_layers = _validated_hidden_layers(hidden_layers)
-        operator = NeuralNetworkOperator(seed, [m * n, *hidden_layers, m * n], 0)
+        operator = nn_F(seed, [m * n, *hidden_layers, m * n], 0)
+    elif model == MODEL_PAYOFF:
+        if hidden_layers is not None:
+            raise ValueError("hidden_layers is not used by the payoff_F model")
+        if rank is None:
+            rank = m * n
+        if not isinstance(rank, numbers.Integral) or int(rank) < 1:
+            raise ValueError("rank must be a positive integer")
+        operator = payoff_F(seed, m, n, int(rank))
+    else:
+        raise ValueError(f"unknown model {model!r}; expected one of {MODELS}")
+    if derivative_free:
+        operator = DerivFreeWrapper(operator)
 
     np.random.seed(seed)
     initial_point = np.random.dirichlet(np.ones(n), size=(m,))
-    solution, summary = VI_simplex_product(operator).solve(
+    solution, summary = FP_VI(operator).solve(
         initial_point, gap_tol=gap_tol, efficient_corrector=efficient_corrector,
-        maxnit=MAX_ITERATIONS, maxsubnit=MAX_SUBITERATIONS, verbose=verbose,
-        record_file=RECORD_FILE, print_preci=PRINT_PRECISION)
+        maxnit=MAX_ITERATIONS, record_file=RECORD_FILE if record else None,
+        print_preci=PRINT_PRECISION)
     return format_result(seed, solution, summary)
 
 
 # ------------------------------------------------------------------ CLI
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Solve one instance: vi_numpy when m = 1, game_numpy when m > 1.")
+        description="Solve one instance of VI(F, Delta_n^m) with the unified "
+                    "single-level solver (m = 1 is the simplex case).")
     parser.add_argument("--dimension", type=_positive_int, nargs=2, required=True,
                         metavar=("M", "N"), help="dimensions m n")
-    parser.add_argument("--model", choices=("nn_F", "payoff_F"), required=True,
+    parser.add_argument("--model", choices=MODELS, required=True,
                         help="operator model: nn_F (neural network) or payoff_F (payoff tensor)")
     parser.add_argument("--seed", type=int, default=0, help="random seed of the instance (default 0)")
     parser.add_argument("--gap-tol", type=_positive_float, default=GAP_TOLERANCE,
                         help="required gap tolerance (default 1e-5)")
     parser.add_argument("--hidden-layers", type=_parse_layer_list, metavar="LIST",
-                        help="bracketed list of hidden-layer widths, e.g. '[8, 4]' or '[]' (default [m*n])")
+                        help="bracketed list of hidden-layer widths, e.g. '[8, 4]' or '[]' "
+                             "(nn_F only; default [m*n])")
     parser.add_argument("--rank", type=_positive_int,
-                        help="CP rank of the payoff-tensor model (default: m*n)")
+                        help="CP rank of the payoff-tensor model (payoff_F only; default m*n)")
     parser.add_argument("--kkt", action="store_true",
                         help="use the KKT corrector instead of the barrier corrector")
+    parser.add_argument("--derivative-free", action="store_true",
+                        help="use the Broyden rank-one Jacobian wrapper (DerivFreeWrapper)")
     parser.add_argument("--threads", type=_thread_count_argument, default=_DEFAULT_BLAS_THREADS,
                         metavar="N|auto",
-                        help="number of BLAS/OpenMP threads (default 1); 'auto' keeps the library defaults")
-    parser.add_argument("--verbose", type=int, default=0, choices=(0, 1, 2),
-                        help="iteration-trace verbosity (default 0); 1 or 2 write to data/record.log")
+                        help="number of BLAS/OpenMP threads (default 1); 'auto' keeps the "
+                             "library defaults")
+    parser.add_argument("--record", action="store_true",
+                        help="write the per-iteration trace to data/record.log (default: no trace)")
     return parser.parse_args(argv)
 
 
@@ -385,30 +284,22 @@ def main(argv: Sequence[str] | None = None) -> None:
     """Run the command-line interface."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments:
-        # Demo instance used in the README: 16-player, 16-action payoff game, R = 256.
-        print(run_game_instance(0, (16, 16), rank=256))
+        # Demo instance used in the README: 16-player, 16-action payoff game
+        # with CP rank R = 256, solved with the barrier corrector.
+        print(run_instance(0, (16, 16), model=MODEL_PAYOFF, rank=256))
         return
 
     args = _parse_args(arguments)
-    efficient_corrector = not args.kkt
-    m, n = args.dimension
-    payoff_game = args.model == "payoff_F"
-
-    if payoff_game and args.hidden_layers is not None:
-        raise SystemExit("--hidden-layers is only used with --model nn_F")
-    if not payoff_game and args.rank is not None:
+    if args.model == MODEL_NN and args.rank is not None:
         raise SystemExit("--rank is only used with --model payoff_F")
+    if args.model == MODEL_PAYOFF and args.hidden_layers is not None:
+        raise SystemExit("--hidden-layers is only used with --model nn_F")
 
-    if m == 1:
-        line = run_vi_instance(
-            args.seed, n, args.hidden_layers, verbose=args.verbose,
-            efficient_corrector=efficient_corrector, gap_tol=args.gap_tol,
-            payoff_game=payoff_game, rank=args.rank)
-    else:
-        line = run_game_instance(
-            args.seed, (m, n), hidden_layers=args.hidden_layers, verbose=args.verbose,
-            payoff_game=payoff_game, efficient_corrector=efficient_corrector,
-            rank=args.rank, gap_tol=args.gap_tol)
+    m, n = args.dimension
+    line = run_instance(
+        args.seed, (m, n), model=args.model, hidden_layers=args.hidden_layers,
+        rank=args.rank, record=args.record, efficient_corrector=not args.kkt,
+        gap_tol=args.gap_tol, derivative_free=args.derivative_free)
     print(line)
 
 

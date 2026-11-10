@@ -1,3 +1,9 @@
+"""Regenerate ``docs/overview.png`` from two representative solver runs.
+
+The script runs ``main.py`` for the simplex and product-of-simplex cases with
+iteration tracing enabled, reads the per-iteration trace from ``data/record.log``
+and draws the convergence curves.
+"""
 from __future__ import annotations
 
 import subprocess
@@ -13,7 +19,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[1]
 RECORD = REPO / "data" / "record.log"
 
-SEED = 2
+SEED = 0
 GAP_TOL = 1e-10
 VI_DIMENSION = ["1", "256"]
 GAME_DIMENSION = ["16", "16"]
@@ -27,7 +33,8 @@ def trace(seed: int, gap_tol: float, dimension: list[str]) -> str:
         "--model", "nn_F",
         "--seed", str(seed),
         "--gap-tol", str(gap_tol),
-        "--verbose", "1",
+        "--record",
+        "--derivative-free",
     ]
     previous = RECORD.read_text(encoding="utf-8") if RECORD.exists() else None
     try:
