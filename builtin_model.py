@@ -8,8 +8,8 @@ The module provides the two random operators used in the experiments:
   payoff tensor has low CP (canonical polyadic) rank.
 
 Both operators expose ``value(x)`` and ``value_Jaco(x)``.  The latter returns
-``(F(x), JF(x))``, where ``JF`` has shape ``x.shape + x.shape`` -- ``(n, n)``
-for a point in ``Delta_n`` and ``(m, n, m, n)`` for a point in ``Delta_n^m``.
+``(F(x), JF(x))``, where ``F`` has shape ``x.shape`` and ``JF`` has shape
+``x.shape + x.shape``.
 The solver needs only ``value_Jaco``; ``value`` is needed by
 :class:`DerivFreeWrapper`.
 
@@ -260,7 +260,8 @@ class DerivFreeWrapper:
 
     def __init__(self, model, rel_step: float = _DEFAULT_REL_STEP,
                  refresh_every: int = _DEFAULT_REFRESH_EVERY) -> None:
-        assert hasattr(model, "value"), "model must expose .value(x)"
+        if not hasattr(model, "value"):
+            raise TypeError("model must expose a value(x) method")
         self.model = model
         self.rel_step = rel_step
         self.refresh_every = refresh_every

@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Test-only dependency of the pytest suite in tests/.
+pytest>=7

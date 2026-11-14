@@ -14,8 +14,8 @@ product domain ``Delta_n^m``.
 
 Running ``python main.py`` without arguments solves the demo instance used in
 the README: a payoff-tensor game with ``m = n = 16`` players/actions, CP rank
-``R = 256`` and seed ``0``, solved with the barrier corrector.  Add ``--record``
-to write the per-iteration trace to ``data/record.log``.
+``R = 256`` and seed ``0``, solved with the barrier corrector.  Add ``--verbose``
+to print the per-iteration trace to stdout.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ import math
 import numbers
 import os
 import sys
-from typing import Iterable, Sequence
+from typing import Sequence
 
 _BLAS_THREAD_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                           "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")
@@ -143,13 +143,6 @@ import numpy as np
 from builtin_model import nn_F, payoff_F, DerivFreeWrapper
 from solver import FP_VI
 
-np.seterr(divide="ignore", invalid="ignore", over="ignore")
-
-# --------------------------------------------------------------------- paths
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(PROJECT_DIR, "data")
-RECORD_FILE = os.path.join(DATA_DIR, "record.log")
-os.makedirs(DATA_DIR, exist_ok=True)
 
 # ------------------------------------------------------------ experiment setup
 PRINT_PRECISION = 6
@@ -162,20 +155,10 @@ MODEL_PAYOFF = "payoff_F"
 MODELS = (MODEL_NN, MODEL_PAYOFF)
 
 
-# ------------------------------------------------------------------ formatting
-def format_result(seed: int, result, summary: Iterable) -> str:
-    """Format one result line in the layout used by the data files."""
-    formatted = "|".join(
-        f"{item:^7d}" if type(item) is int else f"{item:.{PRINT_PRECISION}e}"
-        for item in summary
-    )
-    return f"|{seed:^5d}|{repr(result is not None):7}|{formatted}|\n"
-
-
 # ------------------------------------------------------------- run instances
 def run_instance(seed: int, dimension: tuple[int, int], model: str = MODEL_PAYOFF,
                  hidden_layers: Sequence[int] | None = None, rank: int | None = None,
-                 record: bool = False, efficient_corrector: bool = True,
+                 verbose: bool = False, efficient_corrector: bool = True,
                  gap_tol: float = GAP_TOLERANCE,
                  derivative_free: bool = False) -> str:
     """Solve one seeded instance of ``VI(F, Delta_n^m)`` and return its result line.
@@ -192,9 +175,9 @@ def run_instance(seed: int, dimension: tuple[int, int], model: str = MODEL_PAYOF
 
     With ``derivative_free=True`` the operator is wrapped in
     :class:`builtin_model.DerivFreeWrapper`, so the solver only receives
-    function values plus a Broyden Jacobian estimate.  With ``record=True`` the
-    per-iteration trace is written to ``data/record.log``; otherwise nothing is
-    recorded.
+    function values plus a Broyden Jacobian estimate.  With ``verbose=True``
+    the solver prints the per-iteration trace to stdout; otherwise stdout stays
+    silent.
 
     Parameters
     ----------
@@ -209,9 +192,9 @@ def run_instance(seed: int, dimension: tuple[int, int], model: str = MODEL_PAYOF
         ``[m*n]``).
     rank : int, optional
         CP rank of the payoff tensor (``payoff_F`` only; default ``m*n``).
-    record : bool
-        ``True`` writes the per-iteration trace to ``data/record.log``;
-        ``False`` (the default) disables recording.
+    verbose : bool
+        ``True`` prints the per-iteration trace to stdout; ``False`` (the
+        default) keeps stdout silent.
     efficient_corrector : bool
         ``True`` uses the barrier corrector, ``False`` the KKT corrector.
     gap_tol : float
@@ -245,13 +228,17 @@ def run_instance(seed: int, dimension: tuple[int, int], model: str = MODEL_PAYOF
     initial_point = np.random.dirichlet(np.ones(n), size=(m,))
     solution, summary = FP_VI(operator).solve(
         initial_point, gap_tol=gap_tol, efficient_corrector=efficient_corrector,
-        maxnit=MAX_ITERATIONS, record_file=RECORD_FILE if record else None,
-        print_preci=PRINT_PRECISION)
-    return format_result(seed, solution, summary)
+        maxnit=MAX_ITERATIONS, verbose=verbose, print_preci=PRINT_PRECISION)
+    formatted = "|".join(
+        f"{item:^7d}" if type(item) is int else f"{item:.{PRINT_PRECISION}e}"
+        for item in summary
+    )
+    return f"|{seed:^5d}|{repr(solution is not None):7}|{formatted}|\n"
 
 
 # ------------------------------------------------------------------ CLI
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse the command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Solve one instance of VI(F, Delta_n^m) with the unified "
                     "single-level solver (m = 1 is the simplex case).")
@@ -275,8 +262,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         metavar="N|auto",
                         help="number of BLAS/OpenMP threads (default 1); 'auto' keeps the "
                              "library defaults")
-    parser.add_argument("--record", action="store_true",
-                        help="write the per-iteration trace to data/record.log (default: no trace)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="print the per-iteration trace to stdout (redirect stdout "
+                             "to save it, e.g. > data/record.log)")
     return parser.parse_args(argv)
 
 
@@ -298,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     m, n = args.dimension
     line = run_instance(
         args.seed, (m, n), model=args.model, hidden_layers=args.hidden_layers,
-        rank=args.rank, record=args.record, efficient_corrector=not args.kkt,
+        rank=args.rank, verbose=args.verbose, efficient_corrector=not args.kkt,
         gap_tol=args.gap_tol, derivative_free=args.derivative_free)
     print(line)
 

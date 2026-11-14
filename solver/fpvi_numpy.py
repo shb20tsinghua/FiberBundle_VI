@@ -1,23 +1,17 @@
 """Predictor-corrector path-following solver for ``VI(F, Delta_n^m)``.
 
-``FP_VI`` follows the fixed-point bundle path of a variational inequality on a
-product of ``m`` simplices; ``VI(F, Delta_n)`` is the special case ``m = 1``,
-where the scalar root of the barrier equation is found with ``brentq``.  The
-paper's notation is kept:
+``FP_VI`` follows paths on the fixed-point bundle.
+The paper's notation is kept:
 
 * ``pi``      -- primal point, an ``(m, n)`` array with each row in ``Delta_n``;
 * ``tau``     -- barrier parameter, an ``(m, n)`` array (``tau_isum`` is its
   row-sum vector);
 * ``F``       -- operator value, an ``(m, n)`` array;
 * ``G``       -- fixed-point bundle residual.
-
-The predictor-corrector iteration can optionally be recorded: pass a path as
-``record_file`` to :meth:`FP_VI.solve` to write one trace row per iteration.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TextIO
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,12 +22,22 @@ from .find_root_numpy import find_root_isum
 
 FloatArray = NDArray[np.float64]
 
-# Iteration-trace layout (also written to ``record_file`` by ``solve``).
+# Iteration-trace layout (also printed by ``solve`` when ``verbose=True``).
 _RECORD_COLUMNS = ("nit", "gap", "barrier_sum", "G_norm", "d_sign", "ratio",
                    "accept", "tang_stepln", "avoid_n")
 _FLOAT_COLUMNS = frozenset(("gap", "barrier_sum", "G_norm", "ratio",
                             "tang_stepln"))
 _SUMMARY_COLUMNS = ("nit", "gap", "barrier_sum", "G_norm", "avoid_n")
+
+# Input-validation messages.
+_VALIDATION_INTERIOR = (
+    "iter_init must be a non-empty 2-D array in the relative interior of the "
+    "product of simplices: every entry must be strictly positive and every "
+    "row must sum to 1")
+_VALIDATION_OPERATOR = (
+    "operator.value_Jaco must accept iter_init and return (F, Jacobian) with "
+    "F.shape == iter_init.shape and "
+    "Jacobian.shape == iter_init.shape + iter_init.shape")
 
 # Default scheduling constants of the path-following scheme.
 _INITIAL_BARRIER_SUM = 1e3
@@ -71,6 +75,7 @@ class _Record:
 
 
 def _format_header(print_precision: int) -> str:
+    """Format the iteration-trace header."""
     width = 6 + print_precision
     cells = [f"{column:^{width if column in _FLOAT_COLUMNS else 7}}"
              for column in _RECORD_COLUMNS]
@@ -78,6 +83,7 @@ def _format_header(print_precision: int) -> str:
 
 
 def _format_row(record: _Record, print_precision: int) -> str:
+    """Format one iteration-trace row."""
     cells = [f"{getattr(record, column):.{print_precision}e}"
              if column in _FLOAT_COLUMNS else f"{getattr(record, column):^7d}"
              for column in _RECORD_COLUMNS]
@@ -85,7 +91,7 @@ def _format_row(record: _Record, print_precision: int) -> str:
 
 
 class FP_VI:
-    """Solve ``VI(F, Delta_n^m)`` by path following on the fixed-point bundle.
+    """Solve ``VI(F, Delta_n^m)`` by path-following on the fixed-point bundle.
 
     Parameters
     ----------
@@ -96,13 +102,11 @@ class FP_VI:
 
     def __init__(self, operator) -> None:
         self._operator = operator
-        # All remaining state is (re)initialised by :meth:`solve`.
         self._record = _Record()
-        self._record_io: TextIO | None = None
 
     # ------------------------------------------------------------------ API
     def solve(self, iter_init, gap_tol, efficient_corrector=True, maxnit=10000,
-              record_file=None, print_preci=6):
+              verbose=False, print_preci=6):
         """Run the path-following iteration.
 
         Parameters
@@ -118,22 +122,65 @@ class FP_VI:
             the perturbed KKT conditions.
         maxnit : int
             Maximum number of predictor-corrector iterations.
-        record_file : str or None
-            Path of the iteration trace.  When it is not ``None`` (the default
-            is ``None``), the file is created and one row is written per
-            predictor-corrector iteration; ``None`` disables recording.
+        verbose : bool
+            ``True`` prints the iteration trace to stdout: a header followed by
+            one row per predictor-corrector iteration.  ``False`` (the default)
+            prints nothing.
         print_preci : int
-            Number of decimal places in the recorded trace.
+            Number of decimal places in the printed trace.
 
         Returns
         -------
-        (solution, summary)
+        (solution, info)
             ``solution`` is the final iterate (or ``None`` if the iteration
-            limit was hit); ``summary`` is
+            limit was hit); ``info`` is
             ``[nit, gap, barrier_sum, G_norm, avoid_n]``.
+
+        Raises
+        ------
+        ValueError
+            If ``iter_init`` is not in the relative interior of the product of
+            simplices, or if ``operator.value_Jaco(iter_init)`` does not return
+            an operator value and Jacobian with the required shapes.
         """
-        self._reset(gap_tol, efficient_corrector, maxnit, record_file,
-                    print_preci)
+        iter_init = self._validate_input(iter_init)
+        self._reset(gap_tol, efficient_corrector, maxnit, verbose, print_preci)
+        self._setup(iter_init)
+
+        if self._verbose:
+            print(_format_header(self._print_precision), end="", flush=True)
+        solution = self._follow_path(iter_init)
+        return solution, [getattr(self._record, column) for column in _SUMMARY_COLUMNS]
+
+    def _validate_input(self, iter_init) -> FloatArray:
+        """Validate the starting point and the operator interface.
+
+        ``iter_init`` must be a non-empty 2-D array in the relative interior of
+        the product of simplices: every entry is strictly positive and every
+        row sums to 1.  The operator is queried once here and must return a
+        value with the shape of ``iter_init`` and a Jacobian with shape
+        ``iter_init.shape + iter_init.shape``.
+        """
+        try:
+            iter_init = np.asarray(iter_init, dtype=float)
+        except (TypeError, ValueError) as error:
+            raise ValueError(_VALIDATION_INTERIOR) from error
+        if (iter_init.ndim != 2 or iter_init.size == 0
+                or not np.all(iter_init > 0)
+                or not np.allclose(iter_init.sum(axis=1), 1.0,
+                                   rtol=1e-12, atol=1e-12)):
+            raise ValueError(_VALIDATION_INTERIOR)
+        try:
+            value, jacobian = self._operator.value_Jaco(iter_init)
+        except Exception as error:  # the operator rejected the starting point
+            raise ValueError(_VALIDATION_OPERATOR) from error
+        if (np.shape(value) != iter_init.shape
+                or np.shape(jacobian) != iter_init.shape + iter_init.shape):
+            raise ValueError(_VALIDATION_OPERATOR)
+        return iter_init
+
+    def _setup(self, iter_init) -> None:
+        """Initialise the domain-dependent state for a run started at ``iter_init``."""
         self._m, self._n = iter_init.shape
         self._mn = iter_init.shape[0] * iter_init.shape[1]
         self._tau_floor = min(_TAU_FLOOR, self._gap_tol / self._mn)
@@ -142,27 +189,16 @@ class FP_VI:
         self._ones = np.ones(self._m)
         self._index = np.arange(self._mn)
 
-        if self._record_file is not None:
-            self._record_io = open(record_file, "w")
-            self._record_io.write(_format_header(self._print_precision))
-        try:
-            solution = self._follow_path(iter_init)
-        finally:
-            if self._record_io is not None:
-                self._record_io.close()
-        return solution, [getattr(self._record, column) for column in _SUMMARY_COLUMNS]
-
-    # ------------------------------------------------------- path following
-    def _reset(self, gap_tol, efficient_corrector, maxnit, record_file,
+    # ------------------------------------------------------- path-following
+    def _reset(self, gap_tol, efficient_corrector, maxnit, verbose,
                print_preci) -> None:
         """Store the run configuration and clear the previous trace."""
         self._maxnit = maxnit
         self._gap_tol = gap_tol
         self._efficient_corrector = efficient_corrector
-        self._record_file = record_file
+        self._verbose = verbose
         self._print_precision = print_preci
         self._record = _Record()
-        self._record_io = None
 
     def _follow_path(self, pi):
         """Follow the bundle path until every block satisfies ``gap_tol``."""
@@ -204,8 +240,8 @@ class FP_VI:
             self._record.accept = accept
             self._record.tang_stepln = self._tangent_step
             self._record.avoid_n = avoidance_count
-            if self._record_file is not None:
-                self._write_record()
+            if self._verbose:
+                print(_format_row(self._record, self._print_precision), end="", flush=True)
             if (tau_check_isum_acc <= self._gap_tol).all():
                 return pi_acc
         print("Maximum Iteration Number Exceeded!")
@@ -221,7 +257,7 @@ class FP_VI:
 
     # ------------------------------------------------------- linear algebra
     def _evaluate_state(self, pi):
-        """Evaluate ``F``, the gaps and the projected bundle Jacobian at ``pi``.
+        """Evaluate ``F``, the gaps and the bundle Jacobian at ``pi``.
 
         The operator is queried on every call: it may be stateful (for example
         the derivative-free Broyden wrapper, which refreshes its secant Jacobian
@@ -252,8 +288,9 @@ class FP_VI:
             if self._m > 1:
                 root = find_root_isum(reduced, tau, tau_isum)[:, None]
             else:
-                root = brentq(lambda v: (tau[0] / (reduced[0] + v)).sum() - 1,
-                              0, tau_isum[0])
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    root = brentq(lambda v: (tau[0] / (reduced[0] + v)).sum() - 1,
+                                  0, tau_isum[0])
             root = reduced + root
             normal_matrix = (bundle_jacobian.T * (pi / root).ravel()[None, :]).dot(bundle_jacobian)
             right_hand_side = bundle_jacobian.T.dot((pi - tau / root).flatten())
@@ -303,13 +340,8 @@ class FP_VI:
         residual_after = np.matvec(projector_c.swapaxes(1, 2),
                                    pi_corrected * values_c - tau_new).ravel()
         residual_after_norm = np.sqrt(residual_after.dot(residual_after))
-        ratio = residual_after_norm / residual_before
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = residual_after_norm / residual_before
 
         return (pi_corrected, tau_new.sum(axis=-1), gaps_c, direction_sign, ratio,
                 residual_after_norm)
-
-    # ------------------------------------------------------------- output
-    def _write_record(self) -> None:
-        """Write and flush one row of the iteration trace."""
-        self._record_io.write(_format_row(self._record, self._print_precision))
-        self._record_io.flush()

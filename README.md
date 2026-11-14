@@ -12,16 +12,16 @@ Reference implementation of the *fixed-point bundle* predictor–corrector path-
 
 Both cases are handled by `FP_VI` in `solver/fpvi_numpy.py`: the simplex case $\mathrm{VI}(F,\Delta_n)$ is the special case $m = 1$ of $\mathrm{VI}(F,\Delta_n^m)$. The method requires no monotonicity or other structural assumptions: it performs path-following on a fiber bundle from an arbitrary starting point, detects and avoids singularities, and guarantees global linear convergence.
 
-The solver accepts any object exposing the method `value_Jaco(x) -> (F, JF)`, where `F` is the operator value and `JF` its Jacobian at `x`.
+The solver accepts any object exposing a `value_Jaco(x) -> (F, JF)` method, where `F` is the operator value and `JF` its Jacobian at `x`.
 `builtin_model.py` also provides `DerivFreeWrapper`, which turns an object exposing only `value(x) -> F` into a `value_Jaco` operator using a Broyden rank-one Jacobian approximation; this enables the derivative-free mode.
 
-The repository reports 36,000 highly nonlinear instances, covering derivative-free and derivative-based; the gap tolerance `1e-5` is reached on every instance.
+The repository reports results for 36,000 highly nonlinear instances, covering derivative-free and derivative-based modes; the gap tolerance `1e-5` is met on every instance.
 
 ![Convergence of the path-following iteration](docs/overview.png)
 
 *Convergence of two representative runs; reproducible with `python docs/plot_overview.py`.*
 
-**Contents:** [Overview](#overview) · [Installation](#installation) · [Quick start](#quick-start) · [Repository structure](#repository-structure) · [Solver API](#solver-api) · [Built-in operator models](#built-in-operator-models) · [Custom operators](#custom-operators) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Data](#data) · [Release notes](#release-notes) · [Citation](#citation) · [License](#license)
+**Contents:** [Overview](#overview) · [Installation](#installation) · [Quick start](#quick-start) · [Repository structure](#repository-structure) · [Solver API](#solver-api) · [Built-in operator models](#built-in-operator-models) · [Custom operators](#custom-operators) · [Numerical experiments](#numerical-experiments) · [Cost per iteration](#cost-per-iteration) · [Release notes](#release-notes) · [Citation](#citation) · [License](#license)
 
 Python ≥ 3.9 · NumPy ≥ 2.2 · SciPy ≥ 1.10 · MIT License
 
@@ -29,12 +29,12 @@ Python ≥ 3.9 · NumPy ≥ 2.2 · SciPy ≥ 1.10 · MIT License
 
 The repository accompanies two papers:
 
-| #   | Paper                                                                                                                                                                                                                | Implementation                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solver/fpvi_numpy.py` — class `FP_VI`, simplex case $m = 1$                     |
-| 2   | *The fixed-point bundle method over product-of-simplex domains arising from game equilibria* — [arXiv:2609.16158](https://arxiv.org/abs/2609.16158), [Optimization Online](https://optimization-online.org/?p=36751) | `solver/fpvi_numpy.py` — class `FP_VI`, product-of-simplices case $m \ge 1$     |
+| #   | Paper                                                                                                                                                                                                                | Implementation                                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1   | *A path-following framework on fiber bundle for variational inequalities* — [arXiv:2606.00778](https://arxiv.org/abs/2606.00778), [Optimization Online](https://optimization-online.org/?p=34972)                    | `solver/fpvi_numpy.py` — class `FP_VI`, simplex case $m = 1$                |
+| 2   | *The fixed-point bundle method over product-of-simplex domains arising from game equilibria* — [arXiv:2609.16158](https://arxiv.org/abs/2609.16158), [Optimization Online](https://optimization-online.org/?p=36751) | `solver/fpvi_numpy.py` — class `FP_VI`, product-of-simplices case $m \ge 1$ |
 
-The repository contains the unified solver, the two built-in operator models used to generate random test instances, the derivative-free Jacobian wrapper, the experiment driver, the full per-instance logs behind the tables below, and per-iteration cost measurements.
+The repository contains the solver, the two built-in operator models used to generate random test instances, the derivative-free Jacobian wrapper, the experiment driver, the full per-instance logs behind the tables below, and per-iteration cost measurements.
 
 ## Installation
 
@@ -96,26 +96,26 @@ python main.py --dimension 16 16 --model nn_F --hidden-layers "[256, 128]" --see
 # derivative-free mode: wrap the operator in DerivFreeWrapper
 python main.py --dimension 8 8 --model payoff_F --seed 0 --derivative-free
 
-# record the per-iteration trace to data/record.log
-python main.py --dimension 8 8 --model payoff_F --seed 0 --record
+# print the per-iteration trace
+python main.py --dimension 8 8 --model payoff_F --seed 0 --verbose
 ```
 
-`--model` selects the built-in model `nn_F` or `payoff_F`. `--hidden-layers` configures `nn_F`; `--rank` configures `payoff_F`; `--derivative-free` wraps the selected model in `DerivFreeWrapper`; `--kkt` switches from the barrier corrector to the KKT corrector; `--record` writes the per-iteration trace to `data/record.log`.
+`--model` selects the built-in model `nn_F` or `payoff_F`. `--hidden-layers` configures `nn_F`; `--rank` configures `payoff_F`; `--derivative-free` wraps the selected model in `DerivFreeWrapper`; `--kkt` switches from the barrier corrector to the KKT corrector; `--verbose` prints the per-iteration trace to stdout.
 
 The available options are:
 
-| Option                     | Meaning                                                                                                                                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--dimension M N`          | dimensions `m n`; required                                                                                                                              |
-| `--model {nn_F, payoff_F}` | operator model; required                                                                                                                                |
-| `--seed N`                 | random seed of the instance (default `0`)                                                                                                               |
-| `--gap-tol T`              | required gap tolerance (default `1e-5`)                                                                                                                 |
-| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (nn_F only; default `[m*n]`)                                                            |
-| `--rank R`                 | CP rank of the payoff-tensor model (payoff_F only; default `m*n`)                                                                                        |
-| `--kkt`                    | use the KKT corrector instead of the barrier corrector                                                                                                   |
-| `--derivative-free`        | wrap the operator in `DerivFreeWrapper` (Broyden rank-one Jacobian approximation)                                                                        |
-| `--record`                 | write the per-iteration trace to `data/record.log` (default: no trace)                                                                                  |
-| `--threads N\|auto`        | number of BLAS/OpenMP threads (default `1`); `auto` keeps the library defaults; keep it fixed for reproducible iteration counts                          |
+| Option                     | Meaning                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--dimension M N`          | dimensions `m n`; required                                                                                                      |
+| `--model {nn_F, payoff_F}` | operator model; required                                                                                                        |
+| `--seed N`                 | random seed of the instance (default `0`)                                                                                       |
+| `--gap-tol T`              | required gap tolerance (default `1e-5`)                                                                                         |
+| `--hidden-layers LIST`     | bracketed list of hidden-layer widths, e.g. `"[8, 4]"` or `"[]"` (nn_F only; default `[m*n]`)                                   |
+| `--rank R`                 | CP rank of the payoff-tensor model (payoff_F only; default `m*n`)                                                               |
+| `--kkt`                    | use the KKT corrector instead of the barrier corrector                                                                          |
+| `--derivative-free`        | wrap the operator in `DerivFreeWrapper` (Broyden rank-one Jacobian approximation)                                               |
+| `--verbose`                | print the per-iteration trace to stdout                                                                                         |
+| `--threads N\|auto`        | number of BLAS/OpenMP threads (default `1`); `auto` keeps the library defaults; keep it fixed for reproducible iteration counts |
 
 `python main.py --help` prints the same list.
 
@@ -123,21 +123,22 @@ To call the solver directly on your own operator, see [Custom operators](#custom
 
 ## Repository structure
 
-| Path                         | Description                                                                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.py`                    | Experiment driver and command-line interface: instance construction, derivative-free wrapping, result-line formatting, BLAS-thread bootstrap.                                   |
-| `builtin_model.py`           | The two built-in operator models `nn_F` and `payoff_F`, and the derivative-free wrapper `DerivFreeWrapper`.                                                                    |
-| `solver/fpvi_numpy.py`       | Class `FP_VI` — single-level predictor–corrector path-following solver for $\mathrm{VI}(F,\Delta_n^m)$; $\mathrm{VI}(F,\Delta_n)$ is the case $m = 1$.                                       |
+| Path                         | Description                                                                                                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`                    | Experiment driver and command-line interface: instance construction, derivative-free wrapping, result-line formatting, BLAS-thread bootstrap.                                       |
+| `builtin_model.py`           | The two built-in operator models `nn_F` and `payoff_F`, and the derivative-free wrapper `DerivFreeWrapper`.                                                                         |
+| `solver/fpvi_numpy.py`       | Class `FP_VI` — single-level predictor–corrector path-following solver for $\mathrm{VI}(F,\Delta_n^m)$; $\mathrm{VI}(F,\Delta_n)$ is the case $m = 1$.                              |
 | `solver/find_root_numpy.py`  | Bit-identical reimplementation of `scipy.optimize.elementwise.find_root`, used because it is faster than calling the SciPy function. See the SciPy documentation for the algorithm. |
-| `data/`                      | Per-instance experiment logs of the three experiment families (180 log files, 36,000 results); see [Data](#data).                                                              |
-| `data/README.md`             | Layout, file naming, log format and all six experiment tables of the data folder.                                                                                              |
-| `docs/overview.png`          | Convergence of two representative runs; see [Numerical experiments](#numerical-experiments).                                                                                    |
-| `docs/plot_overview.py`      | Development helper that regenerates `docs/overview.png`; requires matplotlib.                                                                                                  |
-| `examples/quickstart.ipynb`  | Colab quickstart: arbitrary `m, n` with the single solver `FP_VI`, custom or built-in operators, optional derivative-free wrapper.                                               |
-| `docs/cpu_per_iteration.png` | Measured average CPU time per solver iteration; see [Cost per iteration](#cost-per-iteration).                                                                                  |
-| `requirements.txt`           | Python dependencies.                                                                                                                                                           |
-| `LICENSE`                    | MIT license.                                                                                                                                                                   |
-| `CITATION.cff`               | Citation metadata for the repository.                                                                                                                                          |
+| `tests/`                     | Self-contained pytest suite (`test_fpvi_numpy.py`) for input validation, the bundle Jacobian, both correctors and the stopping rules.                                               |
+| `data/`                      | Per-instance experiment logs of the three experiment families (180 log files, 36,000 results); see [data/README.md](data/README.md).                                                |
+| `data/README.md`             | Layout, file naming, log format and all six experiment tables of the data folder.                                                                                                   |
+| `docs/overview.png`          | Convergence of two representative runs; see [Numerical experiments](#numerical-experiments).                                                                                        |
+| `docs/plot_overview.py`      | Development helper that regenerates `docs/overview.png`; requires matplotlib.                                                                                                       |
+| `examples/quickstart.ipynb`  | Colab quickstart: arbitrary `m, n` with the single solver `FP_VI`, custom or built-in operators, optional derivative-free wrapper.                                                  |
+| `docs/cpu_per_iteration.png` | Measured average CPU time per solver iteration; see [Cost per iteration](#cost-per-iteration).                                                                                      |
+| `requirements.txt`           | Python dependencies.                                                                                                                                                                |
+| `LICENSE`                    | MIT license.                                                                                                                                                                        |
+| `CITATION.cff`               | Citation metadata for the repository.                                                                                                                                               |
 
 ## Solver API
 
@@ -151,29 +152,29 @@ solution, info = FP_VI(operator).solve(iter_init, gap_tol, ...)
 
 ### `solve(...)` parameters
 
-| Parameter             | Default  | Meaning                                                                                                                                                                                                                                                                    |
-| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `iter_init`           | required | Starting point: array of shape `(m, n)` in $\Delta_n^m$, with $m \ge 1$. The simplex case uses $m = 1$, i.e. shape `(1, n)`.                                                                                                                                               |
-| `gap_tol`             | required | Required precision. The solver stops when $`\max_i \mathrm{gap}_i(\pi) \le \texttt{gap\_tol}`$, where $`\mathrm{gap}_i(\pi) = \pi_i^\top F_i(\pi) - \min_a F_{i,a}(\pi)`$; for $m = 1$ this is $`\mathrm{gap}(\sigma) = \sigma^\top F(\sigma) - \min_a F_a(\sigma)`$.           |
-| `efficient_corrector` | `True`   | Which regularised Newton corrector to use. `True`: corrector derived from the barrier problem (faster and recommended). `False`: corrector derived from the perturbed KKT conditions.                                                                                      |
-| `maxnit`              | `10000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                                    |
-| `record_file`         | `None`   | Path of the iteration trace. When it is not `None`, the file is created and one row is written per iteration; `None` disables recording.                                                                                                                                   |
-| `print_preci`         | `6`      | Number of decimal places in the recorded trace.                                                                                                                                                                                                                            |
+| Parameter             | Default  | Meaning                                                                                                                                                                                                                                                               |
+| --------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iter_init`           | required | Starting point: array of shape `(m, n)` in the relative interior of $\Delta_n^m$, with $m \ge 1$.                                                                                                                                                                     |
+| `gap_tol`             | required | Required precision. The solver stops when $`\max_i \mathrm{gap}_i(\pi) \le \texttt{gap\_tol}`$, where $`\mathrm{gap}_i(\pi) = \pi_i^\top F_i(\pi) - \min_a F_{i,a}(\pi)`$; for $m = 1$ this is $`\mathrm{gap}(\sigma) = \sigma^\top F(\sigma) - \min_a F_a(\sigma)`$. |
+| `efficient_corrector` | `True`   | Which regularised Newton corrector to use. `True`: corrector derived from the barrier problem (faster and recommended). `False`: corrector derived from the perturbed KKT conditions.                                                                                 |
+| `maxnit`              | `10000`  | Maximum total number of predictor–corrector iterations.                                                                                                                                                                                                               |
+| `verbose`             | `False`  | If `True`, print the iteration trace to stdout; `False` (the default) prints nothing.                                                                                                                                                                                 |
+| `print_preci`         | `6`      | Number of decimal places in the printed trace.                                                                                                                                                                                                                        |
 
 ### Return value
 
 `solve` returns `(solution, info)`:
 
-|            | Meaning                                                                                                                                                        |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `solution` | Array of shape `(m, n)` in $\Delta_n^m$ (shape `(1, n)` for the simplex case), or `None` if the solver fails.                                                  |
-| `info[0]`  | `nit` — total number of predictor–corrector iterations.                                                                                                        |
-| `info[1]`  | Final gap: $\max_i \mathrm{gap}_i(\pi)$, or $\mathrm{gap}(\sigma)$ when $m = 1$.                                                                               |
-| `info[2]`  | `barrier_sum` — final barrier-parameter sum, $\sum_i \mathbf{1}^\top\tau_i$, or $\mathbf{1}^\top\mu$ when $m = 1$.                                                |
-| `info[3]`  | `G_norm` — norm of the fixed-point bundle equation residual.                                                                                                   |
-| `info[4]`  | `avoid_n` — number of singularity-avoidance steps.                                                                                                             |
+|            | Meaning                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `solution` | Array of shape `(m, n)` in $\Delta_n^m$ (shape `(1, n)` for the simplex case), or `None` if the solver fails.      |
+| `info[0]`  | `nit` — total number of predictor–corrector iterations.                                                            |
+| `info[1]`  | Final gap: $\max_i \mathrm{gap}_i(\pi)$, or $\mathrm{gap}(\sigma)$ when $m = 1$.                                   |
+| `info[2]`  | `barrier_sum` — final barrier-parameter sum, $\sum_i \mathbf{1}^\top\tau_i$, or $\mathbf{1}^\top\mu$ when $m = 1$. |
+| `info[3]`  | `G_norm` — norm of the fixed-point bundle equation residual.                                                       |
+| `info[4]`  | `avoid_n` — number of singularity-avoidance steps.                                                                 |
 
-When `record_file` is not `None`, one row is written to it per predictor–corrector iteration. The columns are `nit | gap | barrier_sum | G_norm | d_sign | ratio | accept | tang_stepln | avoid_n`.
+When `verbose=True`, the solver prints a header followed by one row per predictor–corrector iteration to stdout. The columns are `nit | gap | barrier_sum | G_norm | d_sign | ratio | accept | tang_stepln | avoid_n`.
 
 ## Built-in operator models
 
@@ -231,7 +232,7 @@ Turns any operator exposing `value(x) -> F` into an operator exposing `value_Jac
 $$B \leftarrow B + \frac{(y - B s)\,s^\top}{s^\top s},
 \qquad s = x - x_{\text{prev}}, \quad y = F(x) - F(x_{\text{prev}}),$$
 
-and every `refresh_every` updates re-initialises `B` by finite differences to prevent drift (`0` disables re-initialisation). The first call costs `dim + 1` operator evaluations; each later call costs one operator evaluation plus an $O(\text{dim}^2)$ update. `value_Jaco` returns `(F, B)` with the current approximate Jacobian `B`.
+and after every `refresh_every` updates, `B` is re-initialised by finite differences to prevent drift (`0` disables re-initialisation). The first call costs `dim + 1` operator evaluations; each later call costs one operator evaluation plus an $O(\text{dim}^2)$ update. `value_Jaco` returns `(F, B)` with the current approximate Jacobian `B`.
 
 ## Custom operators
 
@@ -302,7 +303,7 @@ All settings use `gap_tol = 1e-5`, 200 instances per setting (seeds `0 ... 199`)
 
 ### $\mathrm{VI}(F,\Delta_n)$ — simplex case (`m = 1`)
 
-- **Operator:** tanh network, Xavier normal initialization, architecture `[n, n, n]` with `n` from 2 to 1024, and `[256]*d` with depth `d` from 2 to 8.
+- **Operator:** tanh network, Xavier normal initialisation, architecture `[n, n, n]` with `n` from 2 to 1024, and `[256]*d` with depth `d` from 2 to 8.
 - **Starting point:** random in $\Delta_n$ (shape `(1, n)`).
 - **Precision:** `gap_tol = 1e-5`, i.e. $\mathrm{gap}(\sigma)\le 1\text{e-}5$.
 - **Correctors:** both the KKT corrector and the barrier corrector.
@@ -331,7 +332,7 @@ All settings use `gap_tol = 1e-5`, 200 instances per setting (seeds `0 ... 199`)
 | `[256]*d`    | 7          | 259 / 240 | 259 / 243 |
 | `[256]*d`    | 8          | 253 / 242 | 255 / 242 |
 
-For the tanh network with Xavier normal initialization, the function complexity actually *decreases*
+For the tanh network with Xavier normal initialisation, the function complexity actually *decreases*
 as the depth increases, which is why the iteration count generally falls with `d`.
 
 When the dimension is large, the KKT corrector needs more iterations than the barrier corrector (the efficient corrector), because its barrier residual contains a `1/pi_i` term that can overflow when some `pi_i[a]` is small; this becomes more likely as `n` grows.
@@ -339,7 +340,7 @@ When the dimension is large, the KKT corrector needs more iterations than the ba
 ### $\mathrm{VI}(F,\Delta_n^m)$ — product-of-simplices case (`m > 1`)
 
 - **Operators:**
-  - *Neural-network model:* tanh network with architecture `[mn, mn, mn]`, Xavier normal initialization.
+  - *Neural-network model:* tanh network with architecture `[mn, mn, mn]`, Xavier normal initialisation.
   - *Payoff-tensor model:* low-rank CP payoff with `R = mn`, `U ~ N(1, 1/m)`.
 - **Starting point:** random in $\Delta_n^m$ (shape `(m, n)`).
 - **Precision:** `gap_tol = 1e-5`, i.e. $\mathrm{gap}_i(\pi)\le 1\text{e-}5$ for every player.
@@ -396,10 +397,10 @@ values as an order-of-magnitude guide, not as a benchmark.
 
 ## Release notes
 
-| Version           | Highlights                                                                                                                                                                                                                                                                                                                                                                          |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Version                   | Highlights                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **v0.2.0** (this release) | One class `FP_VI` in `solver/fpvi_numpy.py`, with $\mathrm{VI}(F,\Delta_n)$ as the special case $m = 1$. The built-in operator models and the new derivative-free wrapper `DerivFreeWrapper` moved into `builtin_model.py`. The iteration is single-level: one predictor plus one corrector step with accept/reject step-size adaptation. New experiments: single-level derivative-free (headline), single-level derivative-based, and the retained two-level derivative-based, each with its own per-instance logs under `data/`. |
-| v0.1.0            | Two separate solver classes, `VI_simplex` for $\mathrm{VI}(F,\Delta_n)$ in `solvers/vi_numpy.py` and `VI_simplex_product` for $\mathrm{VI}(F,\Delta_n^m)$ in `solvers/game_numpy.py`. The implementation follows the classical two-level iteration with an inner corrector subiteration loop after each predictor step. |
+| v0.1.0                    | Two separate solver classes, `VI_simplex` for $\mathrm{VI}(F,\Delta_n)$ in `solvers/vi_numpy.py` and `VI_simplex_product` for $\mathrm{VI}(F,\Delta_n^m)$ in `solvers/game_numpy.py`. The implementation follows the classical two-level iteration with an inner corrector subiteration loop after each predictor step.                                                                                                                                                                                                            |
 
 ## Citation
 

@@ -11,7 +11,7 @@ repository. There are three experiment families, one per path-following variant:
 
 All three families use the same settings: `gap_tol = 1e-5`, 200 instances per configuration
 (seeds `0 ... 199`), and the algorithm converged on every instance (`success = True` in every row).
-Tables 3.1 and 3.2 (single-level derivative-free) are the ones summarized as Tables 1 and 2 of the
+Tables 3.1 and 3.2 (single-level derivative-free) are the ones summarised as Tables 1 and 2 of the
 repository [README](../README.md).
 
 ## Contents and sizes
@@ -28,12 +28,12 @@ families together contain 36,000 rows, all with `success = True`.
 
 ## File naming
 
-| Folder  | Pattern                                | Meaning                                                                                                                                                      |
-| ------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vi/`   | `kkt_<n>.log` / `barr_<n>.log`         | architecture `[n, n, n]`, KKT / barrier corrector, `n` ∈ {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}                                                          |
-| `vi/`   | `kkt_256_<i>.log` / `barr_256_<i>.log` | architecture `[256]*d` with depth `d = i + 2`; `i` ∈ {0, 2, 3, 4, 5, 6} gives `d` ∈ {2, 4, 5, 6, 7, 8}                                                       |
-| `game/` | `nn_<m>_<n>.log`                       | neural-network operator, architecture `[m*n, m*n, m*n]`                                                                                                      |
-| `game/` | `payoff_<m>_<n>.log`                   | payoff-tensor operator, CP rank `R = m*n`                                                                                                                    |
+| Folder  | Pattern                                | Meaning                                                                                                |
+| ------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `vi/`   | `kkt_<n>.log` / `barr_<n>.log`         | architecture `[n, n, n]`, KKT / barrier corrector, `n` ∈ {2, 4, 8, 16, 32, 64, 128, 256, 512, 1024}    |
+| `vi/`   | `kkt_256_<i>.log` / `barr_256_<i>.log` | architecture `[256]*d` with depth `d = i + 2`; `i` ∈ {0, 2, 3, 4, 5, 6} gives `d` ∈ {2, 4, 5, 6, 7, 8} |
+| `game/` | `nn_<m>_<n>.log`                       | neural-network operator, architecture `[m*n, m*n, m*n]`                                                |
+| `game/` | `payoff_<m>_<n>.log`                   | payoff-tensor operator, CP rank `R = m*n`                                                              |
 
 In `vi/`, only the neural-network operator is tested: `kkt` selects the KKT corrector
 (`efficient_corrector=False`) and `barr` the barrier corrector (`efficient_corrector=True`).
@@ -50,15 +50,15 @@ the row format are:
 |  0  |True   |  165  |9.885889e-06|2.536627e-05|1.694000e-16|   0   |
 ```
 
-| Column        | Meaning                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| `seed`        | random seed of the instance (`0 ... 199`)                                                              |
-| `success`     | `True` if the solver reached the requested gap tolerance                                               |
-| `nit`         | total iteration count                                                                                  |
-| `gap`         | final gap value: $\mathrm{gap}(\sigma)$ or $\max_i\mathrm{gap}_i(\pi)$                     |
+| Column        | Meaning                                                                            |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `seed`        | random seed of the instance (`0 ... 199`)                                          |
+| `success`     | `True` if the solver reached the requested gap tolerance                           |
+| `nit`         | total iteration count                                                              |
+| `gap`         | final gap value: $\mathrm{gap}(\sigma)$ or $\max_i\mathrm{gap}_i(\pi)$             |
 | `barrier_sum` | final barrier-parameter sum: $\mathbf{1}^\top\mu$ or $\max_i\mathbf{1}^\top\tau_i$ |
-| `G_norm`      | norm of the fixed-point bundle equation residual                                                       |
-| `avoid_n`     | number of singularity-avoidance steps                                                                  |
+| `G_norm`      | norm of the fixed-point bundle equation residual                                   |
+| `avoid_n`     | number of singularity-avoidance steps                                              |
 
 ## Tables
 
@@ -153,7 +153,7 @@ Compared with the classical two-level iteration, the single-level iteration need
 | 64,4     | 431 / 379      | 1.0 / 1.0     | 350 / 324          | 0.7 / 1.0         |
 | 128,2    | 270 / 245      | 0.3 / 0.0     | 237 / 217          | 0.1 / 0.0         |
 
-**Table 3.1.** Statistics (mean / median) solving $\mathrm{VI}(F,\Delta_n)$ with single-level derivative-free path-following iteration. This table is summarized as Table 1 of the repository README.
+**Table 3.1.** Statistics (mean / median) solving $\mathrm{VI}(F,\Delta_n)$ with single-level derivative-free path-following iteration. This table is summarised as Table 1 of the repository README.
 
 | Architecture | `n` or `d` | KKT: iterations | KKT: avoidance | Barrier: iterations | Barrier: avoidance |
 | ------------ | ---------- | --------------- | -------------- | ------------------- | ------------------ |
@@ -175,7 +175,7 @@ Compared with the classical two-level iteration, the single-level iteration need
 | `[256]*d`    | 7          | 259 / 240       | 0.2 / 0.0      | 259 / 243           | 0.2 / 0.0          |
 | `[256]*d`    | 8          | 253 / 242       | 0.1 / 0.0      | 255 / 242           | 0.1 / 0.0          |
 
-**Table 3.2.** Statistics (mean / median) solving $\mathrm{VI}(F,\Delta_n^m)$ with single-level derivative-free path-following iteration. This table is summarized as Table 2 of the repository README.
+**Table 3.2.** Statistics (mean / median) solving $\mathrm{VI}(F,\Delta_n^m)$ with single-level derivative-free path-following iteration. This table is summarised as Table 2 of the repository README.
 
 | `m`, `n` | NN: iterations | NN: avoidance | Payoff: iterations | Payoff: avoidance |
 | -------- | -------------- | ------------- | ------------------ | ----------------- |
